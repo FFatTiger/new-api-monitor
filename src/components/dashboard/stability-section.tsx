@@ -290,7 +290,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
         </button>
       </div>
 
-      <div className="space-y-3 md:hidden">
+      <div key={`mobile-${activeDimension}`} className="space-y-3 md:hidden">
         {sortedRows.map((row, index) => (
           <article key={`${activeDimension}-${row.key}`} className="ds-mobile-row p-4">
             <div className="flex items-start justify-between gap-3">
@@ -329,7 +329,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
         ))}
       </div>
 
-      <div className="hidden md:block">
+      <div key={`desktop-${activeDimension}`} className="hidden md:block">
         <div className="ds-table-shell overflow-x-auto">
           <table className="min-w-[980px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
             <thead>
