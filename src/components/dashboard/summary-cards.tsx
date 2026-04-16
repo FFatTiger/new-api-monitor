@@ -1,55 +1,100 @@
-import { formatCompactNumber, formatInteger } from "@/lib/format";
-import type { SummaryMetrics } from "@/lib/queries/dashboard";
+import {
+  formatCompactNumber,
+  formatDurationMsAsSeconds,
+  formatDurationSeconds,
+  formatInteger,
+  formatPercent,
+} from "@/lib/format";
+import type { StabilitySummary, SummaryMetrics } from "@/lib/queries/dashboard";
 
 interface SummaryCardsProps {
   summary: SummaryMetrics;
+  stabilitySummary: StabilitySummary;
 }
 
 const cards: Array<{
-  key: keyof SummaryMetrics;
+  key: string;
   label: string;
   foot: string;
-  format: (value: number) => string;
+  getValue: (summary: SummaryMetrics, stabilitySummary: StabilitySummary) => number | null;
+  format: (value: number | null) => string;
   valueClassName: string;
 }> = [
   {
     key: "requestCount",
     label: "请求数",
     foot: "请求",
-    format: formatInteger,
+    getValue: (summary) => summary.requestCount,
+    format: (value) => formatInteger(value ?? 0),
     valueClassName: "text-[var(--foreground)]",
   },
   {
     key: "totalTokens",
     label: "令牌消耗",
     foot: "令牌",
-    format: formatCompactNumber,
+    getValue: (summary) => summary.totalTokens,
+    format: (value) => formatCompactNumber(value ?? 0),
     valueClassName: "text-[var(--foreground)]",
   },
   {
     key: "activeTokenCount",
     label: "活跃密钥",
     foot: "密钥",
-    format: formatInteger,
+    getValue: (summary) => summary.activeTokenCount,
+    format: (value) => formatInteger(value ?? 0),
     valueClassName: "text-[var(--foreground-muted)]",
   },
   {
     key: "activeUserCount",
     label: "活跃用户",
     foot: "用户",
-    format: formatInteger,
+    getValue: (summary) => summary.activeUserCount,
+    format: (value) => formatInteger(value ?? 0),
     valueClassName: "text-[var(--foreground-muted)]",
   },
   {
     key: "activeChannelCount",
     label: "活跃渠道",
     foot: "渠道",
-    format: formatInteger,
+    getValue: (summary) => summary.activeChannelCount,
+    format: (value) => formatInteger(value ?? 0),
     valueClassName: "text-[var(--foreground-muted)]",
+  },
+  {
+    key: "avgFirstTokenLatency",
+    label: "平均首 Token 耗时",
+    foot: "s",
+    getValue: (_, stabilitySummary) => stabilitySummary.avgFirstTokenLatency,
+    format: formatDurationMsAsSeconds,
+    valueClassName: "text-[var(--foreground)]",
+  },
+  {
+    key: "avgTotalResponseTime",
+    label: "平均响应总耗时",
+    foot: "s",
+    getValue: (_, stabilitySummary) => stabilitySummary.avgTotalResponseTime,
+    format: formatDurationSeconds,
+    valueClassName: "text-[var(--foreground)]",
+  },
+  {
+    key: "availabilityRate",
+    label: "可用率",
+    foot: "成功 / 总请求",
+    getValue: (_, stabilitySummary) => getAvailabilityRate(stabilitySummary.errorRate),
+    format: formatPercent,
+    valueClassName: "text-[var(--foreground)]",
   },
 ];
 
-export function SummaryCards({ summary }: SummaryCardsProps) {
+function getAvailabilityRate(errorRate: number | null | undefined) {
+  if (errorRate === null || errorRate === undefined || !Number.isFinite(errorRate)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(1, 1 - errorRate));
+}
+
+export function SummaryCards({ summary, stabilitySummary }: SummaryCardsProps) {
   return (
     <section className="ds-panel px-4 py-4 sm:px-5 sm:py-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -58,9 +103,9 @@ export function SummaryCards({ summary }: SummaryCardsProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {cards.map((card) => {
-          const value = summary[card.key];
+          const value = card.getValue(summary, stabilitySummary);
 
           return (
             <article key={card.key} className="ds-card-muted px-4 py-3.5 sm:px-4 sm:py-4">

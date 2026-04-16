@@ -1,4 +1,5 @@
 import { DashboardHeaderControls } from "@/components/dashboard/filters";
+import { StabilitySection } from "@/components/dashboard/stability-section";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
 import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { TokenRankingTable } from "@/components/dashboard/token-ranking-table";
@@ -38,7 +39,7 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
       </header>
 
-      <SummaryCards summary={data.summary} />
+      <SummaryCards summary={data.summary} stabilitySummary={data.stabilitySummary} />
 
       <TokenRankingTable
         tokenRows={data.tokenRankings}
@@ -46,6 +47,8 @@ export default async function Home({ searchParams }: PageProps) {
         modelRows={data.modelRankings}
         channelRows={data.channelRankings}
       />
+
+      <StabilitySection modelRows={data.modelStability} channelRows={data.channelStability} />
 
       <UsageTrendChart data={data.trend} granularity={data.filters.granularity} />
     </main>

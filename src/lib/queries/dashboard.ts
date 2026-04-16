@@ -97,6 +97,40 @@ export interface ChannelRankingRow {
   latestUsedAt: number;
 }
 
+export interface StabilitySummary {
+  totalAttempts: number;
+  successCount: number;
+  errorCount: number;
+  errorRate: number | null;
+  avgFirstTokenLatency: number | null;
+  avgTotalResponseTime: number | null;
+}
+
+export interface ModelStabilityRow {
+  modelName: string;
+  totalAttempts: number;
+  successCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgFirstTokenLatency: number | null;
+  avgTotalResponseTime: number | null;
+  latestUsedAt: number;
+}
+
+export interface ChannelStabilityRow {
+  channelId: number;
+  channelName: string;
+  type: number;
+  status: number;
+  totalAttempts: number;
+  successCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgFirstTokenLatency: number | null;
+  avgTotalResponseTime: number | null;
+  latestUsedAt: number;
+}
+
 export interface TrendPoint {
   bucketTs: number;
   requestCount: number;
@@ -114,10 +148,13 @@ export interface DashboardData {
   generatedAt: number;
   filters: DashboardFilters;
   summary: SummaryMetrics;
+  stabilitySummary: StabilitySummary;
   tokenRankings: TokenRankingRow[];
   userRankings: UserRankingRow[];
   modelRankings: ModelRankingRow[];
   channelRankings: ChannelRankingRow[];
+  modelStability: ModelStabilityRow[];
+  channelStability: ChannelStabilityRow[];
   trend: TrendPoint[];
   usernameOptions: FilterOption[];
   modelOptions: FilterOption[];
@@ -331,6 +368,33 @@ function buildLogsWhere(filters: DashboardFilters, alias = "l") {
   };
 }
 
+function getValidFirstTokenLatencySql(expression: string) {
+  return `CASE
+    WHEN COALESCE(${expression}, '') LIKE '{%'
+      AND (${expression}::jsonb ->> 'frt') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+      AND (${expression}::jsonb ->> 'frt')::numeric >= 0
+    THEN (${expression}::jsonb ->> 'frt')::numeric
+    ELSE NULL
+  END`;
+}
+
+function getNullableNumber(value: string | number | null | undefined) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 function getDefaultTokenDetail(): TokenDetailData {
   return {
     firstUsedAt: 0,
@@ -382,236 +446,349 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
   const { whereSql, values } = buildLogsWhere(filters);
   const trendBucket = filters.granularity;
   const normalizedModelSql = getNormalizedModelSql("l.model_name");
+  const validFirstTokenLatencySql = getValidFirstTokenLatencySql("l.other");
 
-  const [summaryResult, tokenResult, userResult, modelResult, channelResult, trendResult, usernameOptionResult, modelOptionResult, channelOptionResult] =
-    await Promise.all([
-      query<{
-        request_count: string | number;
-        total_tokens: string | number;
-        active_token_count: string | number;
-        active_user_count: string | number;
-        active_channel_count: string | number;
-      }>(
-        `
+  const [
+    summaryResult,
+    stabilitySummaryResult,
+    tokenResult,
+    userResult,
+    modelResult,
+    channelResult,
+    modelStabilityResult,
+    channelStabilityResult,
+    trendResult,
+    usernameOptionResult,
+    modelOptionResult,
+    channelOptionResult,
+  ] = await Promise.all([
+    query<{
+      request_count: string | number;
+      total_tokens: string | number;
+      active_token_count: string | number;
+      active_user_count: string | number;
+      active_channel_count: string | number;
+    }>(
+      `
+        SELECT
+          COUNT(*) AS request_count,
+          COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
+          COUNT(DISTINCT NULLIF(l.token_id, 0)) AS active_token_count,
+          COUNT(DISTINCT l.user_id) AS active_user_count,
+          COUNT(DISTINCT l.channel_id) AS active_channel_count
+        FROM logs l
+        ${whereSql}
+      `,
+      values,
+    ),
+    query<{
+      total_attempts: string | number;
+      success_count: string | number;
+      error_count: string | number;
+      error_rate: string | number | null;
+      avg_first_token_latency: string | number | null;
+      avg_total_response_time: string | number | null;
+    }>(
+      `
+        SELECT
+          COUNT(*) FILTER (WHERE l.type IN (2, 5)) AS total_attempts,
+          COUNT(*) FILTER (WHERE l.type = 2) AS success_count,
+          COUNT(*) FILTER (WHERE l.type = 5) AS error_count,
+          COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
+          AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
+          AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time
+        FROM logs l
+        ${whereSql}
+      `,
+      values,
+    ),
+    query<{
+      token_id: string | number;
+      token_name: string;
+      username: string;
+      display_name: string;
+      status: string | number;
+      expired_time: string | number;
+      request_count: string | number;
+      total_tokens: string | number;
+      latest_used_at: string | number;
+    }>(
+      `
+        WITH filtered_logs AS (
           SELECT
-            COUNT(*) AS request_count,
-            COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
-            COUNT(DISTINCT NULLIF(l.token_id, 0)) AS active_token_count,
-            COUNT(DISTINCT l.user_id) AS active_user_count,
-            COUNT(DISTINCT l.channel_id) AS active_channel_count
+            l.token_id,
+            l.token_name,
+            l.user_id,
+            l.username,
+            l.prompt_tokens,
+            l.completion_tokens,
+            l.created_at
           FROM logs l
           ${whereSql}
-        `,
-        values,
-      ),
-      query<{
-        token_id: string | number;
-        token_name: string;
-        username: string;
-        display_name: string;
-        status: string | number;
-        expired_time: string | number;
-        request_count: string | number;
-        total_tokens: string | number;
-        latest_used_at: string | number;
-      }>(
-        `
-          WITH filtered_logs AS (
-            SELECT
-              l.token_id,
-              l.token_name,
-              l.user_id,
-              l.username,
-              l.prompt_tokens,
-              l.completion_tokens,
-              l.created_at
-            FROM logs l
-            ${whereSql}
-          ),
-          aggregated AS (
-            SELECT
-              COALESCE(token_id, 0) AS token_id,
-              COALESCE(NULLIF(token_name, ''), 'Unknown') AS log_token_name,
-              MAX(user_id) AS user_id,
-              MAX(NULLIF(username, '')) AS log_username,
-              COUNT(*) AS request_count,
-              COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              MAX(created_at) AS latest_used_at
-            FROM filtered_logs
-            GROUP BY COALESCE(token_id, 0), COALESCE(NULLIF(token_name, ''), 'Unknown')
-          )
+        ),
+        aggregated AS (
           SELECT
-            aggregated.token_id,
-            COALESCE(NULLIF(tokens.name, ''), aggregated.log_token_name) AS token_name,
-            COALESCE(users.username, aggregated.log_username, 'Unknown') AS username,
-            COALESCE(users.display_name, '') AS display_name,
-            COALESCE(tokens.status, -1) AS status,
-            COALESCE(tokens.expired_time, -1) AS expired_time,
-            aggregated.request_count,
-            aggregated.total_tokens,
-            aggregated.latest_used_at
-          FROM aggregated
-          LEFT JOIN tokens ON tokens.id = aggregated.token_id
-          LEFT JOIN users ON users.id = COALESCE(tokens.user_id, aggregated.user_id)
-          ORDER BY aggregated.total_tokens DESC, aggregated.request_count DESC
-          LIMIT 20
-        `,
-        values,
-      ),
-      query<{
-        user_id: string | number;
-        username: string;
-        display_name: string;
-        status: string | number;
-        request_count: string | number;
-        total_tokens: string | number;
-        latest_used_at: string | number;
-      }>(
-        `
-          WITH filtered_logs AS (
-            SELECT l.user_id, l.username, l.prompt_tokens, l.completion_tokens, l.created_at
-            FROM logs l
-            ${whereSql}
-          ),
-          aggregated AS (
-            SELECT
-              COALESCE(user_id, 0) AS user_id,
-              COALESCE(NULLIF(username, ''), 'Unknown') AS log_username,
-              COUNT(*) AS request_count,
-              COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              MAX(created_at) AS latest_used_at
-            FROM filtered_logs
-            GROUP BY COALESCE(user_id, 0), COALESCE(NULLIF(username, ''), 'Unknown')
-          )
-          SELECT
-            aggregated.user_id,
-            COALESCE(users.username, aggregated.log_username, 'Unknown') AS username,
-            COALESCE(users.display_name, '') AS display_name,
-            COALESCE(users.status, -1) AS status,
-            aggregated.request_count,
-            aggregated.total_tokens,
-            aggregated.latest_used_at
-          FROM aggregated
-          LEFT JOIN users ON users.id = aggregated.user_id
-          ORDER BY aggregated.total_tokens DESC, aggregated.request_count DESC
-          LIMIT 12
-        `,
-        values,
-      ),
-      query<{
-        model_name: string;
-        request_count: string | number;
-        total_tokens: string | number;
-        latest_used_at: string | number;
-      }>(
-        `
-          SELECT
-            ${normalizedModelSql} AS model_name,
+            COALESCE(token_id, 0) AS token_id,
+            COALESCE(NULLIF(token_name, ''), 'Unknown') AS log_token_name,
+            MAX(user_id) AS user_id,
+            MAX(NULLIF(username, '')) AS log_username,
             COUNT(*) AS request_count,
-            COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
+            COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+            MAX(created_at) AS latest_used_at
+          FROM filtered_logs
+          GROUP BY COALESCE(token_id, 0), COALESCE(NULLIF(token_name, ''), 'Unknown')
+        )
+        SELECT
+          aggregated.token_id,
+          COALESCE(NULLIF(tokens.name, ''), aggregated.log_token_name) AS token_name,
+          COALESCE(users.username, aggregated.log_username, 'Unknown') AS username,
+          COALESCE(users.display_name, '') AS display_name,
+          COALESCE(tokens.status, -1) AS status,
+          COALESCE(tokens.expired_time, -1) AS expired_time,
+          aggregated.request_count,
+          aggregated.total_tokens,
+          aggregated.latest_used_at
+        FROM aggregated
+        LEFT JOIN tokens ON tokens.id = aggregated.token_id
+        LEFT JOIN users ON users.id = COALESCE(tokens.user_id, aggregated.user_id)
+        ORDER BY aggregated.total_tokens DESC, aggregated.request_count DESC
+        LIMIT 20
+      `,
+      values,
+    ),
+    query<{
+      user_id: string | number;
+      username: string;
+      display_name: string;
+      status: string | number;
+      request_count: string | number;
+      total_tokens: string | number;
+      latest_used_at: string | number;
+    }>(
+      `
+        WITH filtered_logs AS (
+          SELECT l.user_id, l.username, l.prompt_tokens, l.completion_tokens, l.created_at
+          FROM logs l
+          ${whereSql}
+        ),
+        aggregated AS (
+          SELECT
+            COALESCE(user_id, 0) AS user_id,
+            COALESCE(NULLIF(username, ''), 'Unknown') AS log_username,
+            COUNT(*) AS request_count,
+            COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+            MAX(created_at) AS latest_used_at
+          FROM filtered_logs
+          GROUP BY COALESCE(user_id, 0), COALESCE(NULLIF(username, ''), 'Unknown')
+        )
+        SELECT
+          aggregated.user_id,
+          COALESCE(users.username, aggregated.log_username, 'Unknown') AS username,
+          COALESCE(users.display_name, '') AS display_name,
+          COALESCE(users.status, -1) AS status,
+          aggregated.request_count,
+          aggregated.total_tokens,
+          aggregated.latest_used_at
+        FROM aggregated
+        LEFT JOIN users ON users.id = aggregated.user_id
+        ORDER BY aggregated.total_tokens DESC, aggregated.request_count DESC
+        LIMIT 12
+      `,
+      values,
+    ),
+    query<{
+      model_name: string;
+      request_count: string | number;
+      total_tokens: string | number;
+      latest_used_at: string | number;
+    }>(
+      `
+        SELECT
+          ${normalizedModelSql} AS model_name,
+          COUNT(*) AS request_count,
+          COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
+          MAX(l.created_at) AS latest_used_at
+        FROM logs l
+        ${whereSql}
+        GROUP BY 1
+        ORDER BY total_tokens DESC, request_count DESC
+        LIMIT 12
+      `,
+      values,
+    ),
+    query<{
+      channel_id: string | number;
+      channel_name: string;
+      type: string | number;
+      status: string | number;
+      request_count: string | number;
+      total_tokens: string | number;
+      latest_used_at: string | number;
+    }>(
+      `
+        WITH filtered_logs AS (
+          SELECT
+            l.channel_id,
+            l.channel_name,
+            l.prompt_tokens,
+            l.completion_tokens,
+            l.created_at
+          FROM logs l
+          ${whereSql}
+        ),
+        aggregated AS (
+          SELECT
+            COALESCE(channel_id, 0) AS channel_id,
+            MAX(NULLIF(channel_name, '')) AS log_channel_name,
+            COUNT(*) AS request_count,
+            COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+            MAX(created_at) AS latest_used_at
+          FROM filtered_logs
+          GROUP BY COALESCE(channel_id, 0)
+        )
+        SELECT
+          aggregated.channel_id,
+          COALESCE(NULLIF(channels.name, ''), aggregated.log_channel_name, CONCAT('渠道 ', aggregated.channel_id::text)) AS channel_name,
+          COALESCE(channels.type, -1) AS type,
+          COALESCE(channels.status, -1) AS status,
+          aggregated.request_count,
+          aggregated.total_tokens,
+          aggregated.latest_used_at
+        FROM aggregated
+        LEFT JOIN channels ON channels.id = aggregated.channel_id
+        ORDER BY aggregated.total_tokens DESC, aggregated.request_count DESC
+        LIMIT 12
+      `,
+      values,
+    ),
+    query<{
+      model_name: string;
+      total_attempts: string | number;
+      success_count: string | number;
+      error_count: string | number;
+      error_rate: string | number;
+      avg_first_token_latency: string | number | null;
+      avg_total_response_time: string | number | null;
+      latest_used_at: string | number;
+    }>(
+      `
+        SELECT
+          ${normalizedModelSql} AS model_name,
+          COUNT(*) FILTER (WHERE l.type IN (2, 5)) AS total_attempts,
+          COUNT(*) FILTER (WHERE l.type = 2) AS success_count,
+          COUNT(*) FILTER (WHERE l.type = 5) AS error_count,
+          COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
+          AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
+          AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
+          MAX(l.created_at) AS latest_used_at
+        FROM logs l
+        ${whereSql}
+        GROUP BY 1
+        HAVING COUNT(*) FILTER (WHERE l.type IN (2, 5)) > 0
+        ORDER BY error_rate DESC NULLS LAST, total_attempts DESC, latest_used_at DESC
+        LIMIT 12
+      `,
+      values,
+    ),
+    query<{
+      channel_id: string | number;
+      channel_name: string;
+      type: string | number;
+      status: string | number;
+      total_attempts: string | number;
+      success_count: string | number;
+      error_count: string | number;
+      error_rate: string | number;
+      avg_first_token_latency: string | number | null;
+      avg_total_response_time: string | number | null;
+      latest_used_at: string | number;
+    }>(
+      `
+        WITH aggregated AS (
+          SELECT
+            COALESCE(l.channel_id, 0) AS channel_id,
+            MAX(NULLIF(l.channel_name, '')) AS log_channel_name,
+            COUNT(*) FILTER (WHERE l.type IN (2, 5)) AS total_attempts,
+            COUNT(*) FILTER (WHERE l.type = 2) AS success_count,
+            COUNT(*) FILTER (WHERE l.type = 5) AS error_count,
+            COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
+            AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
+            AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
             MAX(l.created_at) AS latest_used_at
           FROM logs l
           ${whereSql}
-          GROUP BY 1
-          ORDER BY total_tokens DESC, request_count DESC
-          LIMIT 12
-        `,
-        values,
-      ),
-      query<{
-        channel_id: string | number;
-        channel_name: string;
-        type: string | number;
-        status: string | number;
-        request_count: string | number;
-        total_tokens: string | number;
-        latest_used_at: string | number;
-      }>(
-        `
-          WITH filtered_logs AS (
-            SELECT
-              l.channel_id,
-              l.channel_name,
-              l.prompt_tokens,
-              l.completion_tokens,
-              l.created_at
-            FROM logs l
-            ${whereSql}
-          ),
-          aggregated AS (
-            SELECT
-              COALESCE(channel_id, 0) AS channel_id,
-              MAX(NULLIF(channel_name, '')) AS log_channel_name,
-              COUNT(*) AS request_count,
-              COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              MAX(created_at) AS latest_used_at
-            FROM filtered_logs
-            GROUP BY COALESCE(channel_id, 0)
-          )
-          SELECT
-            aggregated.channel_id,
-            COALESCE(NULLIF(channels.name, ''), aggregated.log_channel_name, CONCAT('渠道 ', aggregated.channel_id::text)) AS channel_name,
-            COALESCE(channels.type, -1) AS type,
-            COALESCE(channels.status, -1) AS status,
-            aggregated.request_count,
-            aggregated.total_tokens,
-            aggregated.latest_used_at
-          FROM aggregated
-          LEFT JOIN channels ON channels.id = aggregated.channel_id
-          ORDER BY aggregated.total_tokens DESC, aggregated.request_count DESC
-          LIMIT 12
-        `,
-        values,
-      ),
-      query<{
-        bucket_ts: string | number;
-        request_count: string | number;
-        total_tokens: string | number;
-      }>(
-        `
-          SELECT
-            EXTRACT(EPOCH FROM date_trunc('${trendBucket}', to_timestamp(l.created_at))) AS bucket_ts,
-            COUNT(*) AS request_count,
-            COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens
+          GROUP BY COALESCE(l.channel_id, 0)
+        )
+        SELECT
+          aggregated.channel_id,
+          COALESCE(NULLIF(channels.name, ''), aggregated.log_channel_name, CONCAT('渠道 ', aggregated.channel_id::text)) AS channel_name,
+          COALESCE(channels.type, -1) AS type,
+          COALESCE(channels.status, -1) AS status,
+          aggregated.total_attempts,
+          aggregated.success_count,
+          aggregated.error_count,
+          aggregated.error_rate,
+          aggregated.avg_first_token_latency,
+          aggregated.avg_total_response_time,
+          aggregated.latest_used_at
+        FROM aggregated
+        LEFT JOIN channels ON channels.id = aggregated.channel_id
+        WHERE aggregated.total_attempts > 0
+        ORDER BY aggregated.error_rate DESC NULLS LAST, aggregated.total_attempts DESC, aggregated.latest_used_at DESC
+        LIMIT 12
+      `,
+      values,
+    ),
+    query<{
+      bucket_ts: string | number;
+      request_count: string | number;
+      total_tokens: string | number;
+    }>(
+      `
+        SELECT
+          EXTRACT(EPOCH FROM date_trunc('${trendBucket}', to_timestamp(l.created_at))) AS bucket_ts,
+          COUNT(*) AS request_count,
+          COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens
+        FROM logs l
+        ${whereSql}
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `,
+      values,
+    ),
+    query<{ username: string }>(
+      `
+        SELECT username
+        FROM users
+        WHERE username <> ''
+        ORDER BY username ASC
+      `,
+    ),
+    query<{ model_name: string }>(
+      `
+        SELECT DISTINCT normalized_model AS model_name
+        FROM (
+          SELECT ${normalizedModelSql} AS normalized_model
           FROM logs l
-          ${whereSql}
-          GROUP BY 1
-          ORDER BY 1 ASC
-        `,
-        values,
-      ),
-      query<{ username: string }>(
-        `
-          SELECT username
-          FROM users
-          WHERE username <> ''
-          ORDER BY username ASC
-        `,
-      ),
-      query<{ model_name: string }>(
-        `
-          SELECT DISTINCT normalized_model AS model_name
-          FROM (
-            SELECT ${normalizedModelSql} AS normalized_model
-            FROM logs l
-            WHERE l.model_name <> ''
-          ) models
-          WHERE normalized_model <> 'Unknown'
-          ORDER BY model_name ASC
-        `,
-      ),
-      query<{ id: string | number; label: string }>(
-        `
-          SELECT
-            id,
-            COALESCE(NULLIF(name, ''), CONCAT('渠道 ', id::text)) AS label
-          FROM channels
-          ORDER BY label ASC
-        `,
-      ),
-    ]);
+          WHERE l.model_name <> ''
+        ) models
+        WHERE normalized_model <> 'Unknown'
+        ORDER BY model_name ASC
+      `,
+    ),
+    query<{ id: string | number; label: string }>(
+      `
+        SELECT
+          id,
+          COALESCE(NULLIF(name, ''), CONCAT('渠道 ', id::text)) AS label
+        FROM channels
+        ORDER BY label ASC
+      `,
+    ),
+  ]);
 
   const summaryRow = summaryResult.rows[0];
+  const stabilitySummaryRow = stabilitySummaryResult.rows[0];
   const baseTokenRankings = tokenResult.rows.map((row) => ({
     tokenId: toNumber(row.token_id),
     tokenName: row.token_name,
@@ -824,6 +1001,14 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       activeUserCount: toNumber(summaryRow?.active_user_count),
       activeChannelCount: toNumber(summaryRow?.active_channel_count),
     },
+    stabilitySummary: {
+      totalAttempts: toNumber(stabilitySummaryRow?.total_attempts),
+      successCount: toNumber(stabilitySummaryRow?.success_count),
+      errorCount: toNumber(stabilitySummaryRow?.error_count),
+      errorRate: getNullableNumber(stabilitySummaryRow?.error_rate),
+      avgFirstTokenLatency: getNullableNumber(stabilitySummaryRow?.avg_first_token_latency),
+      avgTotalResponseTime: getNullableNumber(stabilitySummaryRow?.avg_total_response_time),
+    },
     tokenRankings: baseTokenRankings.map((row) => ({
       ...row,
       detail: tokenDetailMap.get(getTokenDetailKey(row.tokenId, row.tokenName)) ?? getDefaultTokenDetail(),
@@ -850,6 +1035,29 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       status: toNumber(row.status, -1),
       requestCount: toNumber(row.request_count),
       totalTokens: toNumber(row.total_tokens),
+      latestUsedAt: toNumber(row.latest_used_at),
+    })),
+    modelStability: modelStabilityResult.rows.map((row) => ({
+      modelName: row.model_name,
+      totalAttempts: toNumber(row.total_attempts),
+      successCount: toNumber(row.success_count),
+      errorCount: toNumber(row.error_count),
+      errorRate: toNumber(row.error_rate),
+      avgFirstTokenLatency: getNullableNumber(row.avg_first_token_latency),
+      avgTotalResponseTime: getNullableNumber(row.avg_total_response_time),
+      latestUsedAt: toNumber(row.latest_used_at),
+    })),
+    channelStability: channelStabilityResult.rows.map((row) => ({
+      channelId: toNumber(row.channel_id),
+      channelName: row.channel_name,
+      type: toNumber(row.type, -1),
+      status: toNumber(row.status, -1),
+      totalAttempts: toNumber(row.total_attempts),
+      successCount: toNumber(row.success_count),
+      errorCount: toNumber(row.error_count),
+      errorRate: toNumber(row.error_rate),
+      avgFirstTokenLatency: getNullableNumber(row.avg_first_token_latency),
+      avgTotalResponseTime: getNullableNumber(row.avg_total_response_time),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     trend: trendResult.rows.map((row) => ({

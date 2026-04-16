@@ -3,6 +3,15 @@ const compactFormatter = new Intl.NumberFormat("zh-CN", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+const percentFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "percent",
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+const durationFormatter = new Intl.NumberFormat("zh-CN", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
 
 const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -31,6 +40,38 @@ export function formatInteger(value: number) {
 
 export function formatCompactNumber(value: number) {
   return compactFormatter.format(value);
+}
+
+export function formatPercent(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return percentFormatter.format(value);
+}
+
+export function formatDurationMs(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) {
+    return "-";
+  }
+
+  return `${durationFormatter.format(value)} ms`;
+}
+
+export function formatDurationMsAsSeconds(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) {
+    return "-";
+  }
+
+  return `${durationFormatter.format(value / 1000)} s`;
+}
+
+export function formatDurationSeconds(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) {
+    return "-";
+  }
+
+  return `${durationFormatter.format(value)} s`;
 }
 
 export function formatDateTime(timestamp: number) {

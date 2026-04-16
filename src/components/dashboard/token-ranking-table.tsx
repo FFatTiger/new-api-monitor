@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   TokenDetailDialog,
@@ -188,37 +188,40 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
     [channelRows],
   );
 
-  const rankingViews: Record<DimensionKey, RankingViewConfig> = {
-    token: {
-      nameLabel: "密钥",
-      infoLabel: "用户",
-      rows: tokenViewRows,
-      sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
-    },
-    user: {
-      nameLabel: "用户",
-      infoLabel: null,
-      rows: userViewRows,
-      sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
-    },
-    model: {
-      nameLabel: "模型",
-      infoLabel: null,
-      rows: modelViewRows,
-      sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
-    },
-    channel: {
-      nameLabel: "渠道",
-      infoLabel: "状态",
-      rows: channelViewRows,
-      sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
-    },
-  };
+  const rankingViews: Record<DimensionKey, RankingViewConfig> = useMemo(
+    () => ({
+      token: {
+        nameLabel: "密钥",
+        infoLabel: "用户",
+        rows: tokenViewRows,
+        sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
+      },
+      user: {
+        nameLabel: "用户",
+        infoLabel: null,
+        rows: userViewRows,
+        sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
+      },
+      model: {
+        nameLabel: "模型",
+        infoLabel: null,
+        rows: modelViewRows,
+        sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
+      },
+      channel: {
+        nameLabel: "渠道",
+        infoLabel: "状态",
+        rows: channelViewRows,
+        sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
+      },
+    }),
+    [channelViewRows, modelViewRows, tokenViewRows, userViewRows],
+  );
 
   const activeView = rankingViews[activeDimension];
   const sortedRows = useMemo(
     () => sortRows(activeView.rows, sortKey, sortDirection),
-    [activeView.rows, sortDirection, sortKey],
+    [activeView, sortDirection, sortKey],
   );
   const leader = sortedRows[0];
 
@@ -254,7 +257,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
               const isActive = tab.key === activeDimension;
 
               return (
-                <Fragment key={tab.key}>
+                <div key={tab.key} className="flex items-center gap-x-2 gap-y-1">
                   {index > 0 ? <span className="text-[var(--foreground-faint)]">/</span> : null}
                   <button
                     type="button"
@@ -267,7 +270,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   >
                     {tab.label}
                   </button>
-                </Fragment>
+                </div>
               );
             })}
           </div>
@@ -345,7 +348,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
             if (row.onSelect) {
               return (
                 <button
-                  key={row.key}
+                  key={`${activeDimension}-${row.key}`}
                   type="button"
                   onClick={row.onSelect}
                   className="ds-mobile-row w-full p-4 text-left active:scale-[0.995]"
@@ -356,7 +359,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
             }
 
             return (
-              <article key={row.key} className="ds-mobile-row p-4">
+              <article key={`${activeDimension}-${row.key}`} className="ds-mobile-row p-4">
                 {content}
               </article>
             );
@@ -400,7 +403,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
               </thead>
               <tbody>
                 {sortedRows.map((row, index) => (
-                  <tr key={row.key} className="ds-table-row align-top">
+                  <tr key={`${activeDimension}-${row.key}`} className="ds-table-row align-top">
                     <td className="px-4 py-3">
                       <span className="ds-table-rank">#{String(index + 1).padStart(2, "0")}</span>
                     </td>
