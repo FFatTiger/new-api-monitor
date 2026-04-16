@@ -1,0 +1,12 @@
+services:
+  new-api-monitor:
+    image: fffattiger/new-api-monitor:dev-latest
+    container_name: new-api-monitor
+    restart: unless-stopped
+    ports:
+      - "${NEW_API_MONITOR_PORT:-31891}:31891"
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 31891
+      DATABASE_URL: ${NEW_API_MONITOR_DATABASE_URL}

@@ -1,36 +1,89 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NEW-API-MONITOR
 
-## Getting Started
+面向 `new-api` 的多维度监控面板，核心视角是 API Key / token 消耗排行，并补充用户、模型、渠道和趋势分析。
 
-First, run the development server:
+## 本地开发
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+默认开发地址：
+- http://localhost:31891
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+运行前准备环境变量：
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cp .env.example .env.local
+```
 
-## Learn More
+然后填写：
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE"
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Docker
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+本项目使用 Next.js standalone 输出，生产镜像监听：
+- `31891`
 
-## Deploy on Vercel
+本地构建：
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+docker build -t fffattiger/new-api-monitor:latest .
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+本地运行：
+
+```bash
+docker run --rm -p 31891:31891 \
+  -e NODE_ENV=production \
+  -e HOSTNAME=0.0.0.0 \
+  -e PORT=31891 \
+  -e DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE" \
+  fffattiger/new-api-monitor:latest
+```
+
+## Portainer Stack
+
+可直接参考仓库内：
+- `docker-compose.portainer.yml`
+
+默认镜像：
+- `fffattiger/new-api-monitor:latest`
+
+关键环境变量：
+- `NEW_API_MONITOR_DATABASE_URL`
+- `NEW_API_MONITOR_PORT`，默认 `31891`
+
+如果和 `new-api` 的 `postgres` 在同一个 Docker network / stack，可使用类似：
+
+```bash
+postgresql://USERNAME:PASSWORD@postgres:5432/new-api
+```
+
+## GitHub Actions / Docker 发布
+
+仓库会通过 GitHub Actions 自动发布 Docker Hub 镜像。
+
+工作流：
+- `.github/workflows/docker-build.yml`
+  - push 到 `main` 时发布：
+    - `fffattiger/new-api-monitor:dev-latest`
+    - `fffattiger/new-api-monitor:dev-<timestamp>`
+- `.github/workflows/release.yml`
+  - 发布 GitHub Release 时发布：
+    - `fffattiger/new-api-monitor:latest`
+    - `fffattiger/new-api-monitor:<version>`
+
+GitHub repository secrets：
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+## 安全说明
+
+- 不要提交 `.env.local`
+- 不要把真实数据库连接串写进仓库文件
+- 当前项目默认没有登录保护，更适合放内网或放在反向代理认证后面
