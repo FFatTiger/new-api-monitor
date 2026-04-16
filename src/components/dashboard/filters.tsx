@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 
 import type { DashboardFilters, FilterOption, FilterPreset } from "@/lib/queries/dashboard";
 
-interface DashboardFiltersBarProps {
+interface DashboardHeaderControlsProps {
   filters: DashboardFilters;
   usernameOptions: FilterOption[];
   modelOptions: FilterOption[];
   channelOptions: FilterOption[];
 }
 
-const presets: Array<{ value: FilterPreset; label: string }> = [
+const visiblePresets: Array<{ value: FilterPreset; label: string }> = [
+  { value: "today", label: "今天" },
   { value: "24h", label: "24 小时" },
   { value: "7d", label: "7 天" },
   { value: "30d", label: "30 天" },
@@ -21,119 +22,227 @@ const presets: Array<{ value: FilterPreset; label: string }> = [
 ];
 
 const fieldClass =
-  "h-11 w-full rounded-[0.95rem] border border-white/8 bg-slate-950/90 px-3 text-[0.78rem] text-slate-100 outline-none transition placeholder:text-slate-500 focus:border-cyan-300/60 focus:bg-black sm:rounded-[1rem]";
+  "ds-input h-10 px-3 text-[0.82rem] text-[var(--foreground)] placeholder:text-[var(--foreground-faint)]";
+const labelClass = "space-y-1.5 text-[0.69rem] font-medium text-[var(--foreground-soft)]";
 
-const labelClass = "space-y-1 text-[0.58rem] tracking-[0.16em] text-slate-500 sm:text-[0.62rem] sm:tracking-[0.2em]";
-
-export function DashboardFiltersBar({
+export function DashboardHeaderControls({
   filters,
   usernameOptions,
   modelOptions,
   channelOptions,
-}: DashboardFiltersBarProps) {
-  const [preset, setPreset] = useState<FilterPreset>(filters.preset);
-  const showCustomDate = preset === "custom";
+}: DashboardHeaderControlsProps) {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogPreset, setDialogPreset] = useState<FilterPreset>(filters.preset);
+  const [quickPreset, setQuickPreset] = useState<FilterPreset>(filters.preset);
+
+  const closeDialog = useCallback(() => {
+    setDialogOpen(false);
+    setDialogPreset(filters.preset);
+    setQuickPreset(filters.preset);
+  }, [filters.preset]);
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeDialog();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeDialog, dialogOpen]);
+
+  function handleQuickPresetChange(event: ChangeEvent<HTMLSelectElement>) {
+    const nextPreset = event.target.value as FilterPreset;
+
+    if (nextPreset === "custom") {
+      setDialogPreset("custom");
+      setDialogOpen(true);
+      return;
+    }
+
+    setQuickPreset(nextPreset);
+    event.currentTarget.form?.requestSubmit();
+  }
+
+  const showCustomDate = dialogPreset === "custom";
 
   return (
-    <form
-      className={
-        showCustomDate
-          ? "grid gap-2 sm:grid-cols-2 xl:grid-cols-[124px_minmax(0,1.35fr)_repeat(3,minmax(0,0.82fr))_146px_146px_minmax(0,220px)]"
-          : "grid gap-2 sm:grid-cols-2 xl:grid-cols-[124px_minmax(0,1.55fr)_repeat(3,minmax(0,0.92fr))_minmax(0,220px)]"
-      }
-    >
-      <label className={labelClass}>
-        <span>时间范围</span>
-        <select
-          name="preset"
-          value={preset}
-          onChange={(event) => setPreset(event.target.value as FilterPreset)}
-          className={fieldClass}
-        >
-          {presets.map((presetOption) => (
-            <option key={presetOption.value} value={presetOption.value}>
-              {presetOption.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className={labelClass}>
-        <span>密钥</span>
-        <input
-          name="token"
-          type="text"
-          defaultValue={filters.token}
-          placeholder="搜索密钥名称"
-          className={fieldClass}
-        />
-      </label>
-
-      <label className={labelClass}>
-        <span>用户</span>
-        <select name="username" defaultValue={filters.username} className={fieldClass}>
-          <option value="">全部</option>
-          {usernameOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className={labelClass}>
-        <span>模型</span>
-        <select name="model" defaultValue={filters.model} className={fieldClass}>
-          <option value="">全部</option>
-          {modelOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className={labelClass}>
-        <span>渠道</span>
-        <select name="channelId" defaultValue={filters.channelId} className={fieldClass}>
-          <option value="">全部</option>
-          {channelOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {showCustomDate ? (
-        <>
-          <label className={labelClass}>
-            <span>开始时间</span>
-            <input name="start" type="date" defaultValue={filters.startDate} className={fieldClass} />
+    <>
+      <div className="flex items-center gap-2">
+        <form method="get" className="flex items-center gap-2">
+          <label className="sr-only" htmlFor="dashboard-quick-preset">
+            时间范围
           </label>
+          <select
+            id="dashboard-quick-preset"
+            name="preset"
+            value={quickPreset}
+            onChange={handleQuickPresetChange}
+            className="ds-compact-control h-10 min-w-[112px] appearance-none pr-8"
+          >
+            {visiblePresets.map((preset) => (
+              <option key={preset.value} value={preset.value}>
+                {preset.label}
+              </option>
+            ))}
+          </select>
 
-          <label className={labelClass}>
-            <span>结束时间</span>
-            <input name="end" type="date" defaultValue={filters.endDate} className={fieldClass} />
-          </label>
-        </>
-      ) : null}
+          <PersistedFilterInputs filters={filters} />
+        </form>
 
-      <div className="grid grid-cols-2 gap-2 sm:col-span-2 xl:col-span-1 xl:flex xl:items-end xl:justify-end">
         <button
-          type="submit"
-          className="inline-flex h-11 items-center justify-center rounded-[0.95rem] border border-cyan-300/25 bg-[linear-gradient(135deg,#9be6ff,#f3b86a)] px-4 text-[0.76rem] font-semibold tracking-[0.1em] text-slate-950 transition hover:brightness-105 sm:text-[0.78rem] sm:tracking-[0.12em] sm:rounded-[1rem] xl:min-w-[96px]"
+          type="button"
+          onClick={() => setDialogOpen(true)}
+          className="ds-icon-button h-10 w-10"
+          aria-label="打开高级筛选"
         >
-          应用
+          <FilterIcon />
         </button>
-
-        <Link
-          href="/"
-          className="inline-flex h-11 items-center justify-center rounded-[0.95rem] border border-white/8 bg-white/[0.03] px-4 text-[0.76rem] font-medium tracking-[0.1em] text-slate-200 transition hover:border-white/18 hover:bg-white/[0.06] sm:text-[0.78rem] sm:tracking-[0.12em] sm:rounded-[1rem] xl:min-w-[96px]"
-        >
-          清空
-        </Link>
       </div>
-    </form>
+
+      {dialogOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-5">
+          <button type="button" aria-label="关闭高级筛选" className="ds-overlay-panel absolute inset-0" onClick={closeDialog} />
+          <div className="ds-overlay-card relative z-10 w-full rounded-t-[24px] px-4 py-4 sm:max-w-[760px] sm:rounded-[24px] sm:px-6 sm:py-5">
+            <div className="ds-divider mb-5 flex items-start justify-between gap-4 pb-4">
+              <div>
+                <p className="ds-kicker">筛选</p>
+                <h2 className="mt-3 text-[1.15rem] font-semibold tracking-[-0.06em] text-[var(--foreground)] sm:text-[1.35rem]">
+                  高级筛选
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={closeDialog}
+                className="ds-icon-button h-9 w-9 text-[1rem]"
+                aria-label="关闭高级筛选"
+              >
+                ×
+              </button>
+            </div>
+
+            <form method="get" className="grid gap-3 sm:grid-cols-2">
+              <label className={labelClass}>
+                <span>时间范围</span>
+                <select
+                  name="preset"
+                  value={dialogPreset}
+                  onChange={(event) => setDialogPreset(event.target.value as FilterPreset)}
+                  className={`${fieldClass} appearance-none`}
+                >
+                  {visiblePresets.map((preset) => (
+                    <option key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={labelClass}>
+                <span>密钥</span>
+                <input
+                  name="token"
+                  type="text"
+                  defaultValue={filters.token}
+                  placeholder="搜索密钥名称"
+                  className={fieldClass}
+                />
+              </label>
+
+              <label className={labelClass}>
+                <span>用户</span>
+                <select name="username" defaultValue={filters.username} className={`${fieldClass} appearance-none`}>
+                  <option value="">全部</option>
+                  {usernameOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={labelClass}>
+                <span>模型</span>
+                <select name="model" defaultValue={filters.model} className={`${fieldClass} appearance-none`}>
+                  <option value="">全部</option>
+                  {modelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={labelClass}>
+                <span>渠道</span>
+                <select name="channelId" defaultValue={filters.channelId} className={`${fieldClass} appearance-none`}>
+                  <option value="">全部</option>
+                  {channelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {showCustomDate ? (
+                <>
+                  <label className={labelClass}>
+                    <span>开始时间</span>
+                    <input name="start" type="date" defaultValue={filters.startDate} className={fieldClass} />
+                  </label>
+
+                  <label className={labelClass}>
+                    <span>结束时间</span>
+                    <input name="end" type="date" defaultValue={filters.endDate} className={fieldClass} />
+                  </label>
+                </>
+              ) : null}
+
+              <div className="flex flex-col gap-2 pt-1 sm:col-span-2 sm:flex-row sm:justify-end">
+                <button type="submit" className="ds-button-primary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
+                  应用
+                </button>
+                <Link href="/" className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
+                  清空
+                </Link>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function PersistedFilterInputs({ filters }: { filters: DashboardFilters }) {
+  return (
+    <>
+      {filters.token ? <input type="hidden" name="token" value={filters.token} /> : null}
+      {filters.username ? <input type="hidden" name="username" value={filters.username} /> : null}
+      {filters.model ? <input type="hidden" name="model" value={filters.model} /> : null}
+      {filters.channelId ? <input type="hidden" name="channelId" value={filters.channelId} /> : null}
+      {filters.startDate ? <input type="hidden" name="start" value={filters.startDate} /> : null}
+      {filters.endDate ? <input type="hidden" name="end" value={filters.endDate} /> : null}
+    </>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M2.25 3.25h11.5M4.75 8h6.5M6.75 12.75h2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.35"
+      />
+    </svg>
   );
 }

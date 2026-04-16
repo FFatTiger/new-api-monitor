@@ -8,7 +8,7 @@ const PRESET_SECONDS = {
 
 type FixedPreset = keyof typeof PRESET_SECONDS;
 
-export type FilterPreset = FixedPreset | "custom" | "all";
+export type FilterPreset = "today" | FixedPreset | "custom" | "all";
 export type TrendGranularity = "hour" | "day";
 export type SearchParamsInput = Record<string, string | string[] | undefined>;
 
@@ -29,7 +29,6 @@ export interface DashboardFilters {
 export interface SummaryMetrics {
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   activeTokenCount: number;
   activeUserCount: number;
   activeChannelCount: number;
@@ -39,7 +38,6 @@ export interface TokenDetailModelRow {
   modelName: string;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   latestUsedAt: number;
 }
 
@@ -48,7 +46,6 @@ export interface TokenDetailChannelRow {
   channelName: string;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   latestUsedAt: number;
 }
 
@@ -66,13 +63,9 @@ export interface TokenRankingRow {
   username: string;
   displayName: string;
   status: number;
-  remainQuota: number;
-  usedQuota: number;
-  unlimitedQuota: boolean;
   expiredTime: number;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   latestUsedAt: number;
   detail: TokenDetailData;
 }
@@ -82,11 +75,8 @@ export interface UserRankingRow {
   username: string;
   displayName: string;
   status: number;
-  accountQuota: number;
-  accountUsedQuota: number;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   latestUsedAt: number;
 }
 
@@ -94,7 +84,6 @@ export interface ModelRankingRow {
   modelName: string;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   latestUsedAt: number;
 }
 
@@ -103,10 +92,8 @@ export interface ChannelRankingRow {
   channelName: string;
   type: number;
   status: number;
-  balance: number;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
   latestUsedAt: number;
 }
 
@@ -114,7 +101,6 @@ export interface TrendPoint {
   bucketTs: number;
   requestCount: number;
   totalTokens: number;
-  totalQuota: number;
 }
 
 export interface FilterOption {
@@ -176,23 +162,48 @@ function getNormalizedModelSql(expression: string) {
   return `COALESCE(NULLIF(BTRIM(regexp_replace(COALESCE(${expression}, ''), '\\s*\\([^)]*\\)$', '')), ''), 'Unknown')`;
 }
 
-function parseDateInput(value: string, endOfDay = false) {
+const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
+const shanghaiDatePartsFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SHANGHAI_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function getShanghaiDateParts(date: Date) {
+  const parts = shanghaiDatePartsFormatter.formatToParts(date);
+  const year = Number(parts.find((part) => part.type === "year")?.value ?? "0");
+  const month = Number(parts.find((part) => part.type === "month")?.value ?? "0");
+  const day = Number(parts.find((part) => part.type === "day")?.value ?? "0");
+
+  return { year, month, day };
+}
+
+function parseShanghaiDateInput(value: string, endOfDay = false) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return null;
   }
 
-  const suffix = endOfDay ? "T23:59:59" : "T00:00:00";
-  const timestamp = Date.parse(`${value}${suffix}`);
+  const [year, month, day] = value.split("-").map(Number);
+  const baseUtcSeconds = Date.UTC(year, month - 1, day, 0, 0, 0) / 1000;
 
-  if (Number.isNaN(timestamp)) {
-    return null;
-  }
-
-  return Math.floor(timestamp / 1000);
+  return baseUtcSeconds + (endOfDay ? 16 * 60 * 60 - 1 : -8 * 60 * 60);
 }
 
 function formatDateInput(timestamp: number) {
-  return new Date(timestamp * 1000).toISOString().slice(0, 10);
+  const { year, month, day } = getShanghaiDateParts(new Date(timestamp * 1000));
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function getTodayRangeInShanghai() {
+  const { year, month, day } = getShanghaiDateParts(new Date());
+  const dateString = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+
+  return {
+    dateString,
+    startTimestamp: parseShanghaiDateInput(dateString, false),
+    endTimestamp: parseShanghaiDateInput(dateString, true),
+  };
 }
 
 function getWindowLabel(
@@ -202,6 +213,10 @@ function getWindowLabel(
 ) {
   if (preset === "all") {
     return "全部时间";
+  }
+
+  if (preset === "today") {
+    return "今天";
   }
 
   if (preset === "custom" && startTimestamp && endTimestamp) {
@@ -222,9 +237,9 @@ function getWindowLabel(
 function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, maxTimestamp: number): DashboardFilters {
   const rawPreset = getFirstValue(searchParams.preset);
   const preset: FilterPreset =
-    rawPreset === "24h" || rawPreset === "7d" || rawPreset === "30d" || rawPreset === "custom" || rawPreset === "all"
+    rawPreset === "today" || rawPreset === "24h" || rawPreset === "7d" || rawPreset === "30d" || rawPreset === "custom" || rawPreset === "all"
       ? rawPreset
-      : "7d";
+      : "today";
 
   const token = cleanText(getFirstValue(searchParams.token));
   const username = cleanText(getFirstValue(searchParams.username), 64);
@@ -232,13 +247,17 @@ function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, max
   const channelId = cleanText(getFirstValue(searchParams.channelId), 20);
   const startDate = cleanText(getFirstValue(searchParams.start), 10);
   const endDate = cleanText(getFirstValue(searchParams.end), 10);
+  const todayRange = getTodayRangeInShanghai();
 
   let startTimestamp: number | null = null;
   let endTimestamp: number | null = maxTimestamp;
 
-  if (preset === "custom") {
-    startTimestamp = parseDateInput(startDate, false) ?? minTimestamp;
-    endTimestamp = parseDateInput(endDate, true) ?? maxTimestamp;
+  if (preset === "today") {
+    startTimestamp = todayRange.startTimestamp ?? minTimestamp;
+    endTimestamp = todayRange.endTimestamp ?? maxTimestamp;
+  } else if (preset === "custom") {
+    startTimestamp = parseShanghaiDateInput(startDate, false) ?? minTimestamp;
+    endTimestamp = parseShanghaiDateInput(endDate, true) ?? maxTimestamp;
   } else if (preset === "all") {
     startTimestamp = null;
     endTimestamp = null;
@@ -262,8 +281,8 @@ function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, max
     username,
     model,
     channelId,
-    startDate,
-    endDate,
+    startDate: preset === "today" ? todayRange.dateString : startDate,
+    endDate: preset === "today" ? todayRange.dateString : endDate,
     startTimestamp,
     endTimestamp,
     granularity,
@@ -369,7 +388,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       query<{
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         active_token_count: string | number;
         active_user_count: string | number;
         active_channel_count: string | number;
@@ -378,7 +396,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           SELECT
             COUNT(*) AS request_count,
             COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
-            COALESCE(SUM(l.quota), 0) AS total_quota,
             COUNT(DISTINCT NULLIF(l.token_id, 0)) AS active_token_count,
             COUNT(DISTINCT l.user_id) AS active_user_count,
             COUNT(DISTINCT l.channel_id) AS active_channel_count
@@ -393,13 +410,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         username: string;
         display_name: string;
         status: string | number;
-        remain_quota: string | number;
-        used_quota: string | number;
-        unlimited_quota: boolean | null;
         expired_time: string | number;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         latest_used_at: string | number;
       }>(
         `
@@ -409,7 +422,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               l.token_name,
               l.user_id,
               l.username,
-              l.quota,
               l.prompt_tokens,
               l.completion_tokens,
               l.created_at
@@ -424,7 +436,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               MAX(NULLIF(username, '')) AS log_username,
               COUNT(*) AS request_count,
               COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              COALESCE(SUM(quota), 0) AS total_quota,
               MAX(created_at) AS latest_used_at
             FROM filtered_logs
             GROUP BY COALESCE(token_id, 0), COALESCE(NULLIF(token_name, ''), 'Unknown')
@@ -435,13 +446,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(users.username, aggregated.log_username, 'Unknown') AS username,
             COALESCE(users.display_name, '') AS display_name,
             COALESCE(tokens.status, -1) AS status,
-            COALESCE(tokens.remain_quota, 0) AS remain_quota,
-            COALESCE(tokens.used_quota, 0) AS used_quota,
-            COALESCE(tokens.unlimited_quota, false) AS unlimited_quota,
             COALESCE(tokens.expired_time, -1) AS expired_time,
             aggregated.request_count,
             aggregated.total_tokens,
-            aggregated.total_quota,
             aggregated.latest_used_at
           FROM aggregated
           LEFT JOIN tokens ON tokens.id = aggregated.token_id
@@ -456,16 +463,13 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         username: string;
         display_name: string;
         status: string | number;
-        account_quota: string | number;
-        account_used_quota: string | number;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         latest_used_at: string | number;
       }>(
         `
           WITH filtered_logs AS (
-            SELECT l.user_id, l.username, l.quota, l.prompt_tokens, l.completion_tokens, l.created_at
+            SELECT l.user_id, l.username, l.prompt_tokens, l.completion_tokens, l.created_at
             FROM logs l
             ${whereSql}
           ),
@@ -475,7 +479,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               COALESCE(NULLIF(username, ''), 'Unknown') AS log_username,
               COUNT(*) AS request_count,
               COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              COALESCE(SUM(quota), 0) AS total_quota,
               MAX(created_at) AS latest_used_at
             FROM filtered_logs
             GROUP BY COALESCE(user_id, 0), COALESCE(NULLIF(username, ''), 'Unknown')
@@ -485,11 +488,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(users.username, aggregated.log_username, 'Unknown') AS username,
             COALESCE(users.display_name, '') AS display_name,
             COALESCE(users.status, -1) AS status,
-            COALESCE(users.quota, 0) AS account_quota,
-            COALESCE(users.used_quota, 0) AS account_used_quota,
             aggregated.request_count,
             aggregated.total_tokens,
-            aggregated.total_quota,
             aggregated.latest_used_at
           FROM aggregated
           LEFT JOIN users ON users.id = aggregated.user_id
@@ -502,7 +502,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         model_name: string;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         latest_used_at: string | number;
       }>(
         `
@@ -510,7 +509,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             ${normalizedModelSql} AS model_name,
             COUNT(*) AS request_count,
             COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
-            COALESCE(SUM(l.quota), 0) AS total_quota,
             MAX(l.created_at) AS latest_used_at
           FROM logs l
           ${whereSql}
@@ -525,10 +523,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         channel_name: string;
         type: string | number;
         status: string | number;
-        balance: string | number | null;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         latest_used_at: string | number;
       }>(
         `
@@ -536,7 +532,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             SELECT
               l.channel_id,
               l.channel_name,
-              l.quota,
               l.prompt_tokens,
               l.completion_tokens,
               l.created_at
@@ -549,7 +544,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               MAX(NULLIF(channel_name, '')) AS log_channel_name,
               COUNT(*) AS request_count,
               COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              COALESCE(SUM(quota), 0) AS total_quota,
               MAX(created_at) AS latest_used_at
             FROM filtered_logs
             GROUP BY COALESCE(channel_id, 0)
@@ -559,10 +553,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(NULLIF(channels.name, ''), aggregated.log_channel_name, CONCAT('渠道 ', aggregated.channel_id::text)) AS channel_name,
             COALESCE(channels.type, -1) AS type,
             COALESCE(channels.status, -1) AS status,
-            channels.balance,
             aggregated.request_count,
             aggregated.total_tokens,
-            aggregated.total_quota,
             aggregated.latest_used_at
           FROM aggregated
           LEFT JOIN channels ON channels.id = aggregated.channel_id
@@ -575,14 +567,12 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         bucket_ts: string | number;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
       }>(
         `
           SELECT
             EXTRACT(EPOCH FROM date_trunc('${trendBucket}', to_timestamp(l.created_at))) AS bucket_ts,
             COUNT(*) AS request_count,
-            COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
-            COALESCE(SUM(l.quota), 0) AS total_quota
+            COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens
           FROM logs l
           ${whereSql}
           GROUP BY 1
@@ -628,13 +618,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     username: row.username,
     displayName: row.display_name,
     status: toNumber(row.status, -1),
-    remainQuota: toNumber(row.remain_quota),
-    usedQuota: toNumber(row.used_quota),
-    unlimitedQuota: row.unlimited_quota === true,
     expiredTime: toNumber(row.expired_time, -1),
     requestCount: toNumber(row.request_count),
     totalTokens: toNumber(row.total_tokens),
-    totalQuota: toNumber(row.total_quota),
     latestUsedAt: toNumber(row.latest_used_at),
   }));
 
@@ -655,7 +641,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           ${normalizedModelSql} AS normalized_model,
           COALESCE(l.channel_id, 0) AS channel_id,
           l.channel_name,
-          l.quota,
           l.prompt_tokens,
           l.completion_tokens,
           l.created_at
@@ -697,7 +682,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         model_name: string;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         latest_used_at: string | number;
       }>(
         `${detailBaseSql},
@@ -708,7 +692,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               normalized_model AS model_name,
               COUNT(*) AS request_count,
               COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
-              COALESCE(SUM(quota), 0) AS total_quota,
               MAX(created_at) AS latest_used_at
             FROM matched_logs
             WHERE normalized_model <> 'Unknown'
@@ -729,7 +712,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             model_name,
             request_count,
             total_tokens,
-            total_quota,
             latest_used_at
           FROM ranked
           WHERE row_number <= 6
@@ -744,7 +726,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         channel_name: string;
         request_count: string | number;
         total_tokens: string | number;
-        total_quota: string | number;
         latest_used_at: string | number;
       }>(
         `${detailBaseSql},
@@ -760,7 +741,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               ) AS channel_name,
               COUNT(*) AS request_count,
               COALESCE(SUM(matched_logs.prompt_tokens + matched_logs.completion_tokens), 0) AS total_tokens,
-              COALESCE(SUM(matched_logs.quota), 0) AS total_quota,
               MAX(matched_logs.created_at) AS latest_used_at
             FROM matched_logs
             LEFT JOIN channels ON channels.id = matched_logs.channel_id
@@ -783,7 +763,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             channel_name,
             request_count,
             total_tokens,
-            total_quota,
             latest_used_at
           FROM ranked
           WHERE row_number <= 6
@@ -814,7 +793,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         modelName: row.model_name,
         requestCount: toNumber(row.request_count),
         totalTokens: toNumber(row.total_tokens),
-        totalQuota: toNumber(row.total_quota),
         latestUsedAt: toNumber(row.latest_used_at),
       });
       tokenDetailMap.set(key, current);
@@ -828,7 +806,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         channelName: row.channel_name,
         requestCount: toNumber(row.request_count),
         totalTokens: toNumber(row.total_tokens),
-        totalQuota: toNumber(row.total_quota),
         latestUsedAt: toNumber(row.latest_used_at),
       });
       tokenDetailMap.set(key, current);
@@ -843,7 +820,6 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     summary: {
       requestCount: toNumber(summaryRow?.request_count),
       totalTokens: toNumber(summaryRow?.total_tokens),
-      totalQuota: toNumber(summaryRow?.total_quota),
       activeTokenCount: toNumber(summaryRow?.active_token_count),
       activeUserCount: toNumber(summaryRow?.active_user_count),
       activeChannelCount: toNumber(summaryRow?.active_channel_count),
@@ -857,18 +833,14 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       username: row.username,
       displayName: row.display_name,
       status: toNumber(row.status, -1),
-      accountQuota: toNumber(row.account_quota),
-      accountUsedQuota: toNumber(row.account_used_quota),
       requestCount: toNumber(row.request_count),
       totalTokens: toNumber(row.total_tokens),
-      totalQuota: toNumber(row.total_quota),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     modelRankings: modelResult.rows.map((row) => ({
       modelName: row.model_name,
       requestCount: toNumber(row.request_count),
       totalTokens: toNumber(row.total_tokens),
-      totalQuota: toNumber(row.total_quota),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     channelRankings: channelResult.rows.map((row) => ({
@@ -876,17 +848,14 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       channelName: row.channel_name,
       type: toNumber(row.type, -1),
       status: toNumber(row.status, -1),
-      balance: toNumber(row.balance),
       requestCount: toNumber(row.request_count),
       totalTokens: toNumber(row.total_tokens),
-      totalQuota: toNumber(row.total_quota),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     trend: trendResult.rows.map((row) => ({
       bucketTs: toNumber(row.bucket_ts),
       requestCount: toNumber(row.request_count),
       totalTokens: toNumber(row.total_tokens),
-      totalQuota: toNumber(row.total_quota),
     })),
     usernameOptions: usernameOptionResult.rows.map((row) => ({
       value: row.username,

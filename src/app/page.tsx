@@ -1,5 +1,6 @@
-import { DimensionTabs } from "@/components/dashboard/dimension-tabs";
+import { DashboardHeaderControls } from "@/components/dashboard/filters";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
+import { ThemeToggle } from "@/components/dashboard/theme-toggle";
 import { TokenRankingTable } from "@/components/dashboard/token-ranking-table";
 import { UsageTrendChart } from "@/components/dashboard/usage-trend-chart";
 import { formatDateTime } from "@/lib/format";
@@ -15,32 +16,38 @@ export default async function Home({ searchParams }: PageProps) {
   const data = await getDashboardData(await searchParams);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-[1720px] flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-5 sm:py-4 lg:px-6 lg:py-5">
-      <header className="flex flex-col gap-2 px-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
-        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-          <span className="inline-flex h-8 items-center rounded-[0.8rem] border border-cyan-300/18 bg-cyan-300/[0.06] px-3 [font-family:var(--font-code)] text-[0.64rem] font-semibold tracking-[0.06em] text-cyan-200 sm:rounded-[0.85rem] sm:text-[0.68rem] sm:tracking-[0.08em]">
-            NEW-API-MONITOR
-          </span>
+    <main className="mx-auto flex min-h-screen w-full max-w-[1240px] flex-col gap-8 px-4 py-6 sm:gap-10 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="ds-wordmark">NEW-API-MONITOR</h1>
         </div>
-        <p className="[font-family:var(--font-code)] text-[0.64rem] uppercase tracking-[0.16em] text-slate-500 sm:text-[0.68rem] sm:tracking-[0.22em]">
-          最近同步 {formatDateTime(Math.floor(data.generatedAt / 1000))}
-        </p>
+
+        <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+          <div className="rounded-[12px] bg-[var(--background-elevated)] px-3 py-2 shadow-[0_0_0_1px_var(--surface-ring)]">
+            <p className="ds-mono text-[0.8rem] text-[var(--foreground-muted)] sm:text-[0.84rem]">
+              {formatDateTime(Math.floor(data.generatedAt / 1000))}
+            </p>
+          </div>
+          <ThemeToggle />
+          <DashboardHeaderControls
+            filters={data.filters}
+            usernameOptions={data.usernameOptions}
+            modelOptions={data.modelOptions}
+            channelOptions={data.channelOptions}
+          />
+        </div>
       </header>
 
-      <SummaryCards
-        summary={data.summary}
-        windowLabel={data.filters.windowLabel}
-        filters={data.filters}
-        usernameOptions={data.usernameOptions}
-        modelOptions={data.modelOptions}
-        channelOptions={data.channelOptions}
+      <SummaryCards summary={data.summary} />
+
+      <TokenRankingTable
+        tokenRows={data.tokenRankings}
+        userRows={data.userRankings}
+        modelRows={data.modelRankings}
+        channelRows={data.channelRankings}
       />
 
-      <TokenRankingTable rows={data.tokenRankings} />
-
       <UsageTrendChart data={data.trend} granularity={data.filters.granularity} />
-
-      <DimensionTabs users={data.userRankings} models={data.modelRankings} channels={data.channelRankings} />
     </main>
   );
 }

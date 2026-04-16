@@ -1,95 +1,232 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import {
   TokenDetailDialog,
   useTokenDetailDialog,
 } from "@/components/dashboard/token-detail-dialog";
-import { formatCompactNumber, formatDateTime, formatQuota } from "@/lib/format";
-import type { TokenRankingRow } from "@/lib/queries/dashboard";
+import { formatCompactNumber, formatDateTime, formatStatus } from "@/lib/format";
+import type {
+  ChannelRankingRow,
+  ModelRankingRow,
+  TokenRankingRow,
+  UserRankingRow,
+} from "@/lib/queries/dashboard";
 
 interface TokenRankingTableProps {
-  rows: TokenRankingRow[];
+  tokenRows: TokenRankingRow[];
+  userRows: UserRankingRow[];
+  modelRows: ModelRankingRow[];
+  channelRows: ChannelRankingRow[];
 }
 
-type SortKey =
-  | "rank"
-  | "tokenName"
-  | "username"
-  | "requestCount"
-  | "totalTokens"
-  | "totalQuota"
-  | "latestUsedAt";
-
+type DimensionKey = "token" | "user" | "model" | "channel";
+type SortKey = "rank" | "name" | "info" | "requestCount" | "totalTokens" | "latestUsedAt";
 type SortDirection = "asc" | "desc";
 
-const defaultDirectionByKey: Record<SortKey, SortDirection> = {
-  rank: "asc",
-  tokenName: "asc",
-  username: "asc",
-  requestCount: "desc",
-  totalTokens: "desc",
-  totalQuota: "desc",
-  latestUsedAt: "desc",
+interface RankingViewRow {
+  key: string;
+  name: string;
+  info: string;
+  requestCount: number;
+  totalTokens: number;
+  latestUsedAt: number;
+  onSelect?: () => void;
+}
+
+interface RankingViewConfig {
+  nameLabel: string;
+  infoLabel: string | null;
+  rows: RankingViewRow[];
+  sortKeys: SortKey[];
+}
+
+const dimensionTabs: Array<{ key: DimensionKey; label: string }> = [
+  { key: "token", label: "密钥排行" },
+  { key: "user", label: "用户排行" },
+  { key: "model", label: "模型排行" },
+  { key: "channel", label: "渠道排行" },
+];
+
+const defaultSortState: Record<DimensionKey, { key: SortKey; direction: SortDirection }> = {
+  token: { key: "totalTokens", direction: "desc" },
+  user: { key: "totalTokens", direction: "desc" },
+  model: { key: "totalTokens", direction: "desc" },
+  channel: { key: "totalTokens", direction: "desc" },
 };
 
-const sortLabels: Record<SortKey, string> = {
-  rank: "排名",
-  tokenName: "密钥",
-  username: "用户",
-  requestCount: "请求",
-  totalTokens: "令牌",
-  totalQuota: "配额",
-  latestUsedAt: "最近调用",
+const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
+  token: {
+    rank: "排名",
+    name: "密钥",
+    info: "用户",
+    requestCount: "请求",
+    totalTokens: "令牌",
+    latestUsedAt: "最近调用",
+  },
+  user: {
+    rank: "排名",
+    name: "用户",
+    info: "显示名",
+    requestCount: "请求",
+    totalTokens: "令牌",
+    latestUsedAt: "最近调用",
+  },
+  model: {
+    rank: "排名",
+    name: "模型",
+    info: "说明",
+    requestCount: "请求",
+    totalTokens: "令牌",
+    latestUsedAt: "最近调用",
+  },
+  channel: {
+    rank: "排名",
+    name: "渠道",
+    info: "状态",
+    requestCount: "请求",
+    totalTokens: "令牌",
+    latestUsedAt: "最近调用",
+  },
 };
 
-export function TokenRankingTable({ rows }: TokenRankingTableProps) {
-  const leader = rows[0];
-  const { selectedRow, openRow, closeRow, isOpen } = useTokenDetailDialog();
-  const [sortKey, setSortKey] = useState<SortKey>("totalTokens");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+function sortRows(rows: RankingViewRow[], sortKey: SortKey, sortDirection: SortDirection) {
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      let result = 0;
 
-  const sortedRows = useMemo(() => {
-    return rows
-      .map((row, index) => ({ row, index }))
-      .sort((left, right) => {
-        let result = 0;
-
-        switch (sortKey) {
-          case "rank":
-            result = left.index - right.index;
-            break;
-          case "tokenName":
-            result = left.row.tokenName.localeCompare(right.row.tokenName, "zh-CN");
-            break;
-          case "username":
-            result = left.row.username.localeCompare(right.row.username, "zh-CN");
-            break;
-          case "requestCount":
-            result = left.row.requestCount - right.row.requestCount;
-            break;
-          case "totalTokens":
-            result = left.row.totalTokens - right.row.totalTokens;
-            break;
-          case "totalQuota":
-            result = left.row.totalQuota - right.row.totalQuota;
-            break;
-          case "latestUsedAt":
-            result = left.row.latestUsedAt - right.row.latestUsedAt;
-            break;
-          default:
-            result = 0;
-        }
-
-        if (result === 0) {
+      switch (sortKey) {
+        case "rank":
           result = left.index - right.index;
-        }
+          break;
+        case "name":
+          result = left.row.name.localeCompare(right.row.name, "zh-CN");
+          break;
+        case "info":
+          result = left.row.info.localeCompare(right.row.info, "zh-CN");
+          break;
+        case "requestCount":
+          result = left.row.requestCount - right.row.requestCount;
+          break;
+        case "totalTokens":
+          result = left.row.totalTokens - right.row.totalTokens;
+          break;
+        case "latestUsedAt":
+          result = left.row.latestUsedAt - right.row.latestUsedAt;
+          break;
+        default:
+          result = 0;
+      }
 
-        return sortDirection === "asc" ? result : -result;
-      })
-      .map((item) => item.row);
-  }, [rows, sortDirection, sortKey]);
+      if (result === 0) {
+        result = left.index - right.index;
+      }
+
+      return sortDirection === "asc" ? result : -result;
+    })
+    .map((item) => item.row);
+}
+
+export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows }: TokenRankingTableProps) {
+  const { selectedRow, openRow, closeRow, isOpen } = useTokenDetailDialog();
+  const [activeDimension, setActiveDimension] = useState<DimensionKey>("token");
+  const [sortKey, setSortKey] = useState<SortKey>(defaultSortState.token.key);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortState.token.direction);
+
+  const tokenViewRows = useMemo<RankingViewRow[]>(
+    () =>
+      tokenRows.map((row) => ({
+        key: `${row.tokenId}-${row.tokenName}`,
+        name: row.tokenName,
+        info: row.username,
+        requestCount: row.requestCount,
+        totalTokens: row.totalTokens,
+        latestUsedAt: row.latestUsedAt,
+        onSelect: () => openRow(row),
+      })),
+    [openRow, tokenRows],
+  );
+
+  const userViewRows = useMemo<RankingViewRow[]>(
+    () =>
+      userRows.map((row) => ({
+        key: String(row.userId),
+        name: row.username,
+        info: "",
+        requestCount: row.requestCount,
+        totalTokens: row.totalTokens,
+        latestUsedAt: row.latestUsedAt,
+      })),
+    [userRows],
+  );
+
+  const modelViewRows = useMemo<RankingViewRow[]>(
+    () =>
+      modelRows.map((row) => ({
+        key: row.modelName,
+        name: row.modelName,
+        info: "",
+        requestCount: row.requestCount,
+        totalTokens: row.totalTokens,
+        latestUsedAt: row.latestUsedAt,
+      })),
+    [modelRows],
+  );
+
+  const channelViewRows = useMemo<RankingViewRow[]>(
+    () =>
+      channelRows.map((row) => ({
+        key: String(row.channelId),
+        name: row.channelName,
+        info: formatStatus(row.status),
+        requestCount: row.requestCount,
+        totalTokens: row.totalTokens,
+        latestUsedAt: row.latestUsedAt,
+      })),
+    [channelRows],
+  );
+
+  const rankingViews: Record<DimensionKey, RankingViewConfig> = {
+    token: {
+      nameLabel: "密钥",
+      infoLabel: "用户",
+      rows: tokenViewRows,
+      sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
+    },
+    user: {
+      nameLabel: "用户",
+      infoLabel: null,
+      rows: userViewRows,
+      sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
+    },
+    model: {
+      nameLabel: "模型",
+      infoLabel: null,
+      rows: modelViewRows,
+      sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
+    },
+    channel: {
+      nameLabel: "渠道",
+      infoLabel: "状态",
+      rows: channelViewRows,
+      sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
+    },
+  };
+
+  const activeView = rankingViews[activeDimension];
+  const sortedRows = useMemo(
+    () => sortRows(activeView.rows, sortKey, sortDirection),
+    [activeView.rows, sortDirection, sortKey],
+  );
+  const leader = sortedRows[0];
+
+  function handleDimensionChange(nextDimension: DimensionKey) {
+    setActiveDimension(nextDimension);
+    setSortKey(defaultSortState[nextDimension].key);
+    setSortDirection(defaultSortState[nextDimension].direction);
+  }
 
   function handleSort(nextKey: SortKey) {
     if (nextKey === sortKey) {
@@ -98,164 +235,160 @@ export function TokenRankingTable({ rows }: TokenRankingTableProps) {
     }
 
     setSortKey(nextKey);
-    setSortDirection(defaultDirectionByKey[nextKey]);
+    setSortDirection(defaultSortState[activeDimension].direction);
   }
 
   function handleMobileSortChange(nextKey: SortKey) {
     setSortKey(nextKey);
-    setSortDirection(defaultDirectionByKey[nextKey]);
+    setSortDirection(defaultSortState[activeDimension].direction);
   }
+
+  const activeSortLabels = sortLabelsByDimension[activeDimension];
 
   return (
     <>
-      <section className="relative overflow-hidden rounded-[1.35rem] border border-[#273140] bg-[linear-gradient(180deg,rgba(6,10,15,0.985),rgba(8,13,20,0.985))] shadow-[0_40px_140px_rgba(0,0,0,0.45)] sm:rounded-[1.8rem]">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:22px_22px] opacity-[0.18]" />
-        <div className="absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(125,211,252,0.09),transparent)]" />
+      <section className="ds-panel overflow-hidden px-4 py-4 sm:px-5 sm:py-5">
+        <div className="ds-divider mb-4 flex flex-col gap-4 pb-4">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] leading-none tracking-[-0.05em] sm:text-[1.18rem]">
+            {dimensionTabs.map((tab, index) => {
+              const isActive = tab.key === activeDimension;
 
-        <div className="relative border-b border-white/6 px-3 py-3 sm:px-5 sm:py-4">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-            <div>
-              <p className="text-[0.58rem] uppercase tracking-[0.28em] text-slate-500 sm:text-[0.64rem] sm:tracking-[0.32em]">
-                主榜
-              </p>
-              <div className="mt-2 flex flex-wrap items-end gap-x-4 gap-y-2">
-                <h2 className="[font-family:var(--font-code)] text-[1.3rem] font-semibold uppercase leading-none tracking-[0.12em] text-white sm:text-[2.3rem] sm:tracking-[0.16em]">
-                  排行
-                </h2>
-              </div>
-            </div>
-
-            {leader ? (
-              <div className="grid w-full gap-2 rounded-[1rem] border border-white/8 bg-black/30 px-3 py-3 sm:grid-cols-3 sm:px-4 xl:min-w-[320px] xl:w-auto">
-                <MetricChip label="榜首" value={leader.tokenName} tone="text-cyan-200" />
-                <MetricChip label="令牌" value={formatCompactNumber(leader.totalTokens)} tone="text-white" />
-                <MetricChip label="请求" value={leader.requestCount.toLocaleString("zh-CN")} tone="text-amber-200" />
-              </div>
-            ) : null}
+              return (
+                <Fragment key={tab.key}>
+                  {index > 0 ? <span className="text-[var(--foreground-faint)]">/</span> : null}
+                  <button
+                    type="button"
+                    onClick={() => handleDimensionChange(tab.key)}
+                    className={`cursor-pointer transition ${
+                      isActive
+                        ? "ds-tab-active-text text-[var(--foreground)]"
+                        : "font-medium text-[var(--foreground-faint)] hover:text-[var(--foreground-soft)]"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                </Fragment>
+              );
+            })}
           </div>
+
+          {leader ? (
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.78rem] text-[var(--foreground-soft)]">
+              <span>
+                榜首 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.name}</span>
+              </span>
+              <span>
+                令牌 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.totalTokens)}</span>
+              </span>
+              <span>
+                请求 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.requestCount.toLocaleString("zh-CN")}</span>
+              </span>
+            </div>
+          ) : null}
         </div>
 
-        <div className="relative px-2 py-2 sm:px-3 sm:py-3">
-          <div className="mb-3 grid grid-cols-[minmax(0,1fr)_92px] gap-2 rounded-[1rem] border border-white/8 bg-black/25 p-2.5 md:hidden">
-            <label className="space-y-1 text-[0.58rem] tracking-[0.18em] text-slate-500">
-              <span>排序</span>
-              <select
-                value={sortKey}
-                onChange={(event) => handleMobileSortChange(event.target.value as SortKey)}
-                className="h-10 w-full rounded-[0.85rem] border border-white/8 bg-slate-950/90 px-3 text-[0.76rem] text-slate-100 outline-none transition focus:border-cyan-300/60 focus:bg-black"
-              >
-                {Object.entries(sortLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <button
-              type="button"
-              onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
-              className="inline-flex h-10 self-end items-center justify-center rounded-[0.85rem] border border-white/8 bg-white/[0.03] px-3 text-[0.72rem] font-medium tracking-[0.12em] text-slate-200 transition hover:border-white/18 hover:bg-white/[0.06]"
+        <div className="mb-4 grid grid-cols-[minmax(0,1fr)_88px] gap-2 md:hidden">
+          <label className="space-y-1.5 text-[0.68rem] font-medium text-[var(--foreground-soft)]">
+            <span>排序</span>
+            <select
+              value={sortKey}
+              onChange={(event) => handleMobileSortChange(event.target.value as SortKey)}
+              className="ds-input h-10 appearance-none px-3 text-[0.8rem]"
             >
-              {sortDirection === "desc" ? "降序" : "升序"}
-            </button>
-          </div>
+              {activeView.sortKeys.map((key) => (
+                <option key={key} value={key}>
+                  {activeSortLabels[key]}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <div className="space-y-2.5 md:hidden">
-            {sortedRows.map((row, index) => (
-              <button
-                key={`${row.tokenId}-${row.tokenName}`}
-                type="button"
-                onClick={() => openRow(row)}
-                className="w-full rounded-[1rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] p-3 text-left transition hover:border-cyan-300/35 hover:bg-cyan-300/[0.08] active:scale-[0.995]"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-[0.8rem] border border-white/10 bg-black/45 px-2 [font-family:var(--font-code)] text-[0.78rem] font-semibold text-white">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
+          <button
+            type="button"
+            onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
+            className="ds-button-secondary h-10 self-end px-3 text-[0.74rem] font-medium"
+          >
+            {sortDirection === "desc" ? "降序" : "升序"}
+          </button>
+        </div>
 
+        <div className="space-y-3 md:hidden">
+          {sortedRows.map((row, index) => {
+            const content = (
+              <>
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-[0.98rem] font-semibold text-white">{row.tokenName}</p>
-                        <p className="mt-1 [font-family:var(--font-code)] text-[0.66rem] uppercase tracking-[0.14em] text-slate-500">
-                          编号 {row.tokenId}
-                        </p>
-                      </div>
-
-                      <div className="shrink-0 text-right">
-                        <p className="text-[0.56rem] uppercase tracking-[0.2em] text-slate-600">令牌</p>
-                        <p className="mt-1 [font-family:var(--font-code)] text-[0.94rem] font-semibold text-cyan-300">
-                          {formatCompactNumber(row.totalTokens)}
-                        </p>
-                      </div>
+                    <div className="flex items-center gap-2">
+                      <span className="ds-table-rank">#{String(index + 1).padStart(2, "0")}</span>
+                      <p className="truncate text-[0.96rem] font-semibold text-[var(--foreground)]">{row.name}</p>
                     </div>
+                    {row.info ? <p className="mt-1 text-[0.76rem] text-[var(--foreground-muted)]">{row.info}</p> : null}
+                  </div>
 
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.72rem] text-slate-400">
-                      <span className="text-slate-100">{row.username}</span>
-                      {row.displayName ? <span>{row.displayName}</span> : null}
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      <MobileMetric label="请求" value={row.requestCount.toLocaleString("zh-CN")} />
-                      <MobileMetric label="配额" value={formatQuota(row.totalQuota)} />
-                      <MobileMetric label="最近" value={formatDateTime(row.latestUsedAt)} />
-                    </div>
+                  <div className="shrink-0 text-right">
+                    <p className="ds-kicker text-[0.56rem] text-[var(--foreground-faint)]">令牌</p>
+                    <p className="mt-1.5 ds-mono text-[0.96rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">
+                      {formatCompactNumber(row.totalTokens)}
+                    </p>
                   </div>
                 </div>
-              </button>
-            ))}
-          </div>
 
-          <div className="hidden overflow-x-auto md:block">
-            <table className="min-w-[780px] border-separate border-spacing-y-2 text-left text-sm text-slate-200 lg:min-w-full">
+                <div className="ds-mobile-meta mt-3 grid grid-cols-2 gap-2 pt-3 text-[0.74rem] text-[var(--foreground-soft)]">
+                  <span>
+                    请求 <span className="ml-1 ds-mono text-[var(--foreground)]">{row.requestCount.toLocaleString("zh-CN")}</span>
+                  </span>
+                  <span className="text-right">{formatDateTime(row.latestUsedAt)}</span>
+                </div>
+              </>
+            );
+
+            if (row.onSelect) {
+              return (
+                <button
+                  key={row.key}
+                  type="button"
+                  onClick={row.onSelect}
+                  className="ds-mobile-row w-full p-4 text-left active:scale-[0.995]"
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            return (
+              <article key={row.key} className="ds-mobile-row p-4">
+                {content}
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="hidden md:block">
+          <div className="ds-table-shell overflow-x-auto">
+            <table
+              className={`w-full border-collapse text-left text-sm text-[var(--foreground)] ${activeView.infoLabel ? "min-w-[820px]" : "min-w-[720px]"}`}
+            >
               <thead>
-                <tr className="text-[0.62rem] uppercase tracking-[0.24em] text-slate-500">
+                <tr className="text-[0.64rem] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
+                  <SortableHeader label="#" sortKey="rank" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
                   <SortableHeader
-                    label="#"
-                    sortKey="rank"
+                    label={activeView.nameLabel}
+                    sortKey="name"
                     activeKey={sortKey}
                     direction={sortDirection}
                     onSort={handleSort}
                   />
-                  <SortableHeader
-                    label="密钥"
-                    sortKey="tokenName"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    label="用户"
-                    sortKey="username"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    align="right"
-                    label="请求"
-                    sortKey="requestCount"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    align="right"
-                    label="令牌"
-                    sortKey="totalTokens"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                  />
-                  <SortableHeader
-                    align="right"
-                    label="配额"
-                    sortKey="totalQuota"
-                    activeKey={sortKey}
-                    direction={sortDirection}
-                    onSort={handleSort}
-                  />
+                  {activeView.infoLabel ? (
+                    <SortableHeader
+                      label={activeView.infoLabel}
+                      sortKey="info"
+                      activeKey={sortKey}
+                      direction={sortDirection}
+                      onSort={handleSort}
+                    />
+                  ) : null}
+                  <SortableHeader label="请求" sortKey="requestCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
+                  <SortableHeader label="令牌" sortKey="totalTokens" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                   <SortableHeader
                     label="最近调用"
                     sortKey="latestUsedAt"
@@ -267,44 +400,33 @@ export function TokenRankingTable({ rows }: TokenRankingTableProps) {
               </thead>
               <tbody>
                 {sortedRows.map((row, index) => (
-                  <tr key={`${row.tokenId}-${row.tokenName}`} className="group">
-                    <td className="rounded-l-[1rem] border border-r-0 border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 align-top group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
-                      <span className="inline-flex h-9 min-w-9 items-center justify-center rounded-[0.8rem] border border-white/10 bg-black/45 px-2 [font-family:var(--font-code)] text-[0.78rem] font-semibold text-white">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
+                  <tr key={row.key} className="ds-table-row align-top">
+                    <td className="px-4 py-3">
+                      <span className="ds-table-rank">#{String(index + 1).padStart(2, "0")}</span>
                     </td>
-                    <td className="border-y border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
-                      <button
-                        type="button"
-                        onClick={() => openRow(row)}
-                        className="flex w-full cursor-pointer flex-col gap-1 rounded-[0.8rem] px-1 py-1 text-left transition hover:bg-white/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/60"
-                      >
-                        <span className="text-[0.96rem] font-semibold text-white transition group-hover:text-cyan-200">
-                          {row.tokenName}
-                        </span>
-                        <span className="[font-family:var(--font-code)] text-[0.68rem] uppercase tracking-[0.16em] text-slate-500 transition group-hover:text-slate-300">
-                          编号 {row.tokenId}
-                        </span>
-                      </button>
+                    <td className="px-4 py-3">
+                      {row.onSelect ? (
+                        <button
+                          type="button"
+                          onClick={row.onSelect}
+                          className="flex w-full cursor-pointer flex-col gap-1 text-left transition hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-color)]"
+                        >
+                          <span className="text-[0.95rem] font-semibold text-[var(--foreground)]">{row.name}</span>
+                        </button>
+                      ) : (
+                        <span className="text-[0.95rem] font-semibold text-[var(--foreground)]">{row.name}</span>
+                      )}
                     </td>
-                    <td className="border-y border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-slate-100">{row.username}</span>
-                        <span className="text-[0.72rem] text-slate-500">{row.displayName || "-"}</span>
-                      </div>
-                    </td>
-                    <td className="border-y border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 text-right [font-family:var(--font-code)] text-[0.8rem] text-slate-300 group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
+                    {activeView.infoLabel ? (
+                      <td className="px-4 py-3 text-[0.78rem] text-[var(--foreground-muted)]">{row.info || "-"}</td>
+                    ) : null}
+                    <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
                       {row.requestCount.toLocaleString("zh-CN")}
                     </td>
-                    <td className="border-y border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 text-right [font-family:var(--font-code)] text-[0.92rem] font-semibold text-cyan-300 group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
+                    <td className="px-4 py-3 text-right ds-mono text-[0.94rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">
                       {formatCompactNumber(row.totalTokens)}
                     </td>
-                    <td className="border-y border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 text-right [font-family:var(--font-code)] text-[0.78rem] text-slate-300 group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
-                      {formatQuota(row.totalQuota)}
-                    </td>
-                    <td className="rounded-r-[1rem] border border-l-0 border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.015))] px-3 py-3 text-[0.72rem] text-slate-400 group-hover:border-cyan-300/35 group-hover:bg-cyan-300/[0.08]">
-                      {formatDateTime(row.latestUsedAt)}
-                    </td>
+                    <td className="px-4 py-3 text-[0.74rem] text-[var(--foreground-soft)]">{formatDateTime(row.latestUsedAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -315,39 +437,6 @@ export function TokenRankingTable({ rows }: TokenRankingTableProps) {
 
       <TokenDetailDialog row={selectedRow} open={isOpen} onClose={closeRow} />
     </>
-  );
-}
-
-interface MetricChipProps {
-  label: string;
-  value: string;
-  tone: string;
-}
-
-function MetricChip({ label, value, tone }: MetricChipProps) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[0.54rem] uppercase tracking-[0.18em] text-slate-600 sm:text-[0.58rem] sm:tracking-[0.22em]">
-        {label}
-      </p>
-      <p className={`truncate [font-family:var(--font-code)] text-[0.82rem] font-semibold uppercase tracking-[0.06em] sm:text-[0.86rem] sm:tracking-[0.08em] ${tone}`}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-interface MobileMetricProps {
-  label: string;
-  value: string;
-}
-
-function MobileMetric({ label, value }: MobileMetricProps) {
-  return (
-    <div className="rounded-[0.8rem] border border-white/6 bg-black/20 px-2.5 py-2">
-      <p className="text-[0.54rem] uppercase tracking-[0.18em] text-slate-600">{label}</p>
-      <p className="mt-1 text-[0.72rem] text-slate-300">{value}</p>
-    </div>
   );
 }
 
@@ -372,14 +461,14 @@ function SortableHeader({
   const indicator = !isActive ? "↕" : direction === "asc" ? "↑" : "↓";
 
   return (
-    <th className={`px-3 py-2 ${align === "right" ? "text-right" : "text-left"}`}>
+    <th className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className={`inline-flex items-center gap-1 whitespace-nowrap transition hover:text-slate-300 ${align === "right" ? "ml-auto" : ""}`}
+        className={`inline-flex items-center gap-1 whitespace-nowrap transition hover:text-[var(--foreground)] ${align === "right" ? "ml-auto" : ""}`}
       >
         <span>{label}</span>
-        <span className={`text-[0.7rem] ${isActive ? "text-cyan-300" : "text-slate-600"}`}>
+        <span className={`text-[0.72rem] ${isActive ? "text-[var(--foreground)]" : "text-[var(--foreground-faint)]"}`}>
           {indicator}
         </span>
       </button>

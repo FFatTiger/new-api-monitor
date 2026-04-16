@@ -1,11 +1,98 @@
 @import "tailwindcss";
 
 :root {
-  --background: #04070b;
-  --foreground: #d8e2ef;
-  --font-display: "Suisse Int'l", "Avenir Next Condensed", "DIN Alternate", "PingFang SC", sans-serif;
-  --font-body: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", sans-serif;
-  --font-code: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  color-scheme: light;
+  --background: #fafafa;
+  --background-elevated: #ffffff;
+  --background-muted: #fcfcfc;
+  --background-subtle: #f5f5f5;
+  --background-gradient-start: #ffffff;
+  --background-gradient-end: #f6f6f6;
+  --background-accent: rgba(10, 114, 239, 0.08);
+  --foreground: #171717;
+  --foreground-muted: #4d4d4d;
+  --foreground-soft: #666666;
+  --foreground-faint: #808080;
+  --focus-color: hsla(212, 100%, 48%, 1);
+  --surface-ring: rgba(0, 0, 0, 0.08);
+  --surface-ring-soft: rgb(235, 235, 235);
+  --surface-divider: rgba(0, 0, 0, 0.08);
+  --surface-divider-soft: rgba(0, 0, 0, 0.06);
+  --table-row-hover: rgba(0, 0, 0, 0.018);
+  --overlay-backdrop: rgba(250, 250, 250, 0.82);
+  --overlay-surface: rgba(255, 255, 255, 0.96);
+  --pill-background: rgba(255, 255, 255, 0.92);
+  --selection-background: rgba(10, 114, 239, 0.14);
+  --selection-foreground: #171717;
+  --tooltip-background: #ffffff;
+  --control-background: #ffffff;
+  --control-hover: #f7f7f7;
+  --button-primary-background: #171717;
+  --button-primary-foreground: #ffffff;
+  --button-primary-hover: #000000;
+  --button-primary-shadow: 0px 0px 0px 1px rgba(23, 23, 23, 0.08), 0px 10px 20px -16px rgba(23, 23, 23, 0.45);
+  --chart-grid: rgba(23, 23, 23, 0.08);
+  --chart-cursor: rgba(23, 23, 23, 0.14);
+  --chart-active-dot-fill: #ffffff;
+  --calendar-picker-filter: none;
+  --shadow-panel: 0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 2px 2px rgba(0, 0, 0, 0.04),
+    0px 8px 8px -8px rgba(0, 0, 0, 0.04), inset 0px 0px 0px 1px #fafafa;
+  --shadow-panel-soft: 0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 2px 2px rgba(0, 0, 0, 0.04),
+    inset 0px 0px 0px 1px #fafafa;
+  --shadow-panel-hover: 0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 4px 12px rgba(0, 0, 0, 0.05),
+    0px 18px 28px -28px rgba(0, 0, 0, 0.24), inset 0px 0px 0px 1px #fafafa;
+  --shadow-overlay: 0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 24px 80px -32px rgba(0, 0, 0, 0.28),
+    inset 0px 0px 0px 1px #fafafa;
+  --radius-panel: 24px;
+  --radius-card: 16px;
+  --radius-control: 12px;
+  --font-body: var(--font-geist-sans), "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", Arial, sans-serif;
+  --font-code: var(--font-geist-mono), ui-monospace, "SFMono-Regular", "Roboto Mono", Menlo, Monaco,
+    "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #050505;
+  --background-elevated: #0c0c0c;
+  --background-muted: #101010;
+  --background-subtle: #141414;
+  --background-gradient-start: #080808;
+  --background-gradient-end: #050505;
+  --background-accent: rgba(10, 114, 239, 0.16);
+  --foreground: #f5f5f5;
+  --foreground-muted: #cacaca;
+  --foreground-soft: #a7a7a7;
+  --foreground-faint: #7d7d7d;
+  --surface-ring: rgba(255, 255, 255, 0.1);
+  --surface-ring-soft: rgba(255, 255, 255, 0.08);
+  --surface-divider: rgba(255, 255, 255, 0.09);
+  --surface-divider-soft: rgba(255, 255, 255, 0.08);
+  --table-row-hover: rgba(255, 255, 255, 0.03);
+  --overlay-backdrop: rgba(5, 5, 5, 0.78);
+  --overlay-surface: rgba(15, 15, 15, 0.94);
+  --pill-background: rgba(255, 255, 255, 0.04);
+  --selection-background: rgba(10, 114, 239, 0.28);
+  --selection-foreground: #f5f5f5;
+  --tooltip-background: #101010;
+  --control-background: #101010;
+  --control-hover: #161616;
+  --button-primary-background: #f5f5f5;
+  --button-primary-foreground: #050505;
+  --button-primary-hover: #ffffff;
+  --button-primary-shadow: 0px 0px 0px 1px rgba(255, 255, 255, 0.14), 0px 16px 36px -24px rgba(255, 255, 255, 0.16);
+  --chart-grid: rgba(255, 255, 255, 0.08);
+  --chart-cursor: rgba(255, 255, 255, 0.12);
+  --chart-active-dot-fill: #050505;
+  --calendar-picker-filter: invert(1) brightness(0.85);
+  --shadow-panel: 0px 0px 0px 1px rgba(255, 255, 255, 0.1), 0px 14px 42px -30px rgba(0, 0, 0, 0.75),
+    inset 0px 0px 0px 1px rgba(255, 255, 255, 0.02);
+  --shadow-panel-soft: 0px 0px 0px 1px rgba(255, 255, 255, 0.1), 0px 10px 24px -24px rgba(0, 0, 0, 0.7),
+    inset 0px 0px 0px 1px rgba(255, 255, 255, 0.02);
+  --shadow-panel-hover: 0px 0px 0px 1px rgba(255, 255, 255, 0.12), 0px 18px 50px -28px rgba(0, 0, 0, 0.8),
+    inset 0px 0px 0px 1px rgba(255, 255, 255, 0.03);
+  --shadow-overlay: 0px 0px 0px 1px rgba(255, 255, 255, 0.12), 0px 32px 100px -40px rgba(0, 0, 0, 0.82),
+    inset 0px 0px 0px 1px rgba(255, 255, 255, 0.03);
 }
 
 @theme inline {
@@ -21,42 +108,19 @@
 
 html {
   scroll-behavior: smooth;
-  background: #04070b;
+  background: var(--background);
 }
 
 body {
-  position: relative;
   margin: 0;
   min-height: 100vh;
-  overflow-x: hidden;
   background:
-    radial-gradient(circle at top, rgba(125, 211, 252, 0.06), transparent 24%),
-    linear-gradient(180deg, #04070b 0%, #071019 45%, #05080d 100%);
+    radial-gradient(circle at top, var(--background-accent), transparent 30%),
+    linear-gradient(180deg, var(--background-gradient-start) 0%, var(--background) 54%, var(--background-gradient-end) 100%);
   color: var(--foreground);
   font-family: var(--font-body);
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    radial-gradient(circle at 20% 0%, rgba(125, 211, 252, 0.08), transparent 22%),
-    radial-gradient(circle at 84% 8%, rgba(245, 184, 107, 0.07), transparent 18%);
-  background-size: 22px 22px, 22px 22px, auto, auto;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), rgba(0, 0, 0, 0.55));
-  opacity: 0.8;
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 8%, transparent 92%, rgba(255, 255, 255, 0.03));
+  font-feature-settings: "liga" 1;
+  text-rendering: optimizeLegibility;
 }
 
 a {
@@ -64,17 +128,287 @@ a {
   text-decoration: none;
 }
 
+button,
 input,
-select,
-button {
+select {
   font: inherit;
+  color: inherit;
+}
+
+button {
+  background: transparent;
 }
 
 input::-webkit-calendar-picker-indicator {
-  filter: invert(0.88) brightness(0.74);
+  opacity: 0.55;
+  filter: var(--calendar-picker-filter);
 }
 
 ::selection {
-  background: rgba(125, 211, 252, 0.18);
-  color: #ffffff;
+  background: var(--selection-background);
+  color: var(--selection-foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+.ds-panel {
+  background: var(--background-elevated);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+.ds-card {
+  background: var(--background-elevated);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel-soft);
+}
+
+.ds-card-muted {
+  background: linear-gradient(180deg, var(--background-elevated) 0%, var(--background-muted) 100%);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel-soft);
+}
+
+.ds-card-interactive {
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.ds-card-interactive:hover {
+  box-shadow: var(--shadow-panel-hover);
+}
+
+.ds-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 9999px;
+  background: var(--pill-background);
+  box-shadow: 0px 0px 0px 1px var(--surface-ring-soft);
+}
+
+.ds-input {
+  width: 100%;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--control-background);
+  box-shadow: var(--shadow-panel-soft);
+  color: var(--foreground);
+  transition:
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.ds-input::placeholder {
+  color: var(--foreground-faint);
+}
+
+.ds-input:hover {
+  box-shadow: var(--shadow-panel-hover);
+}
+
+.ds-input:focus {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-panel-soft);
+}
+
+.ds-button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--button-primary-background);
+  color: var(--button-primary-foreground);
+  box-shadow: var(--button-primary-shadow);
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.ds-button-primary:hover {
+  background: var(--button-primary-hover);
+  transform: translateY(-1px);
+}
+
+.ds-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--control-background);
+  color: var(--foreground);
+  box-shadow: var(--shadow-panel-soft);
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.ds-button-secondary:hover {
+  background: var(--control-hover);
+  box-shadow: var(--shadow-panel-hover);
+  transform: translateY(-1px);
+}
+
+.ds-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: var(--control-background);
+  color: var(--foreground);
+  box-shadow: var(--shadow-panel-soft);
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease,
+    color 180ms ease;
+}
+
+.ds-icon-button:hover {
+  background: var(--control-hover);
+  box-shadow: var(--shadow-panel-hover);
+  transform: translateY(-1px);
+}
+
+.ds-compact-control {
+  border: 0;
+  border-radius: 12px;
+  background: var(--control-background);
+  box-shadow: var(--shadow-panel-soft);
+  color: var(--foreground);
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 0 0.9rem;
+  transition:
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.ds-compact-control:hover {
+  box-shadow: var(--shadow-panel-hover);
+  background: var(--control-hover);
+}
+
+.ds-compact-control:focus {
+  outline: 2px solid var(--focus-color);
+  outline-offset: 2px;
+}
+
+.ds-table-shell {
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--background-elevated);
+  box-shadow: var(--shadow-panel-soft);
+}
+
+.ds-table-row {
+  box-shadow: inset 0px -1px 0px var(--surface-divider-soft);
+  transition: background-color 180ms ease;
+}
+
+.ds-table-row:last-child {
+  box-shadow: none;
+}
+
+.ds-table-row:hover {
+  background: var(--table-row-hover);
+}
+
+.ds-table-rank {
+  font-family: var(--font-code);
+  font-size: 0.73rem;
+  letter-spacing: 0.08em;
+  color: var(--foreground-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-mobile-row {
+  background: var(--background-elevated);
+  border-radius: 16px;
+  box-shadow: var(--shadow-panel-soft);
+  transition:
+    box-shadow 180ms ease,
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+
+.ds-mobile-row:hover {
+  box-shadow: var(--shadow-panel-hover);
+}
+
+.ds-mobile-meta {
+  box-shadow: inset 0px 1px 0px var(--surface-divider-soft);
+}
+
+.ds-dialog-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ds-kicker {
+  font-family: var(--font-code);
+  font-size: 0.72rem;
+  line-height: 1.18;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--foreground-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-mono {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+}
+
+.ds-wordmark {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  line-height: 0.98;
+  letter-spacing: -0.09em;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.ds-divider {
+  box-shadow: inset 0px -1px 0px var(--surface-divider);
+}
+
+.ds-overlay-panel {
+  background: var(--overlay-backdrop);
+  backdrop-filter: blur(14px);
+}
+
+.ds-overlay-card {
+  background: var(--overlay-surface);
+  box-shadow: var(--shadow-overlay);
+}
+
+.ds-tab-active-text {
+  font-weight: 600;
+  text-shadow: 0px 0px 10px rgba(23, 23, 23, 0.08);
+}
+
+:root[data-theme="dark"] .ds-tab-active-text {
+  text-shadow: 0px 0px 14px rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 640px) {
+  body {
+    background: linear-gradient(180deg, var(--background-gradient-start) 0%, var(--background) 100%);
+  }
+
+  .ds-panel {
+    border-radius: 20px;
+  }
 }

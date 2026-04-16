@@ -3,9 +3,6 @@ const compactFormatter = new Intl.NumberFormat("zh-CN", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
-const quotaFormatter = new Intl.NumberFormat("zh-CN", {
-  maximumFractionDigits: 0,
-});
 
 const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -34,10 +31,6 @@ export function formatInteger(value: number) {
 
 export function formatCompactNumber(value: number) {
   return compactFormatter.format(value);
-}
-
-export function formatQuota(value: number) {
-  return quotaFormatter.format(value);
 }
 
 export function formatDateTime(timestamp: number) {
