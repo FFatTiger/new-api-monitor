@@ -21,6 +21,10 @@ interface UsageTrendChartProps {
 
 const subscribe = () => () => {};
 
+const inputStroke = "#2563eb";
+const outputStroke = "#d97706";
+const totalStroke = "var(--foreground-faint)";
+
 export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
   const mounted = useSyncExternalStore(subscribe, () => true, () => false);
 
@@ -42,9 +46,14 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
             令牌趋势
           </h2>
         </div>
-        <span className="ds-pill px-3 py-2 ds-kicker text-[0.58rem] text-[var(--foreground-faint)]">
-          {granularity === "hour" ? "小时" : "天"}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <LegendPill label="输入" color={inputStroke} />
+          <LegendPill label="输出" color={outputStroke} />
+          <LegendPill label="总令牌" color={totalStroke} />
+          <span className="ds-pill px-3 py-2 ds-kicker text-[0.58rem] text-[var(--foreground-faint)]">
+            {granularity === "hour" ? "小时" : "天"}
+          </span>
+        </div>
       </div>
 
       {!mounted ? (
@@ -87,15 +96,52 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
                     return [formatInteger(numericValue), "请求数"];
                   }
 
-                  return [formatCompactNumber(numericValue), "令牌消耗"];
+                  if (seriesName === "inputTokens") {
+                    return [formatCompactNumber(numericValue), "输入令牌"];
+                  }
+
+                  if (seriesName === "outputTokens") {
+                    return [formatCompactNumber(numericValue), "输出令牌"];
+                  }
+
+                  if (seriesName === "totalTokens") {
+                    return [formatCompactNumber(numericValue), "总令牌"];
+                  }
+
+                  return [formatCompactNumber(numericValue), seriesName];
                 }}
-                labelFormatter={(label) => `时间 ${label}`}
+                labelFormatter={(label, payload) => {
+                  const point = payload?.[0]?.payload as TrendPoint | undefined;
+
+                  if (!point) {
+                    return `时间 ${label}`;
+                  }
+
+                  return `时间 ${label} · 请求 ${formatInteger(point.requestCount)}`;
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="inputTokens"
+                stroke={inputStroke}
+                strokeWidth={2.4}
+                dot={false}
+                activeDot={{ r: 4, fill: "var(--chart-active-dot-fill)", stroke: inputStroke, strokeWidth: 2 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="outputTokens"
+                stroke={outputStroke}
+                strokeWidth={2.4}
+                dot={false}
+                activeDot={{ r: 4, fill: "var(--chart-active-dot-fill)", stroke: outputStroke, strokeWidth: 2 }}
               />
               <Line
                 type="monotone"
                 dataKey="totalTokens"
-                stroke="var(--foreground)"
-                strokeWidth={2.4}
+                stroke={totalStroke}
+                strokeWidth={1.8}
+                strokeDasharray="5 5"
                 dot={false}
                 activeDot={{ r: 4, fill: "var(--chart-active-dot-fill)", stroke: "var(--foreground)", strokeWidth: 2 }}
               />
@@ -104,5 +150,14 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
         </div>
       )}
     </section>
+  );
+}
+
+function LegendPill({ label, color }: { label: string; color: string }) {
+  return (
+    <span className="ds-pill inline-flex items-center gap-2 px-3 py-2 ds-kicker text-[0.58rem] text-[var(--foreground-faint)]">
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
   );
 }

@@ -31,6 +31,10 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
     return null;
   }
 
+  const averageInputTokens = row.requestCount > 0 ? row.inputTokens / row.requestCount : 0;
+  const averageOutputTokens = row.requestCount > 0 ? row.outputTokens / row.requestCount : 0;
+  const averageTotalTokens = row.requestCount > 0 ? row.totalTokens / row.requestCount : 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-5">
       <div className="ds-overlay-panel absolute inset-0" onClick={onClose} />
@@ -57,21 +61,21 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
           </div>
         </div>
 
-        <div className="ds-dialog-grid p-4 sm:p-6 md:grid-cols-2 xl:grid-cols-4">
+        <div className="ds-dialog-grid p-4 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
           <DataCard label="用户名" value={row.username} subValue={row.displayName || "-"} />
           <DataCard label="状态" value={formatStatus(row.status)} subValue={`最近调用 ${formatDateTime(row.latestUsedAt)}`} />
           <DataCard label="请求数" value={row.requestCount.toLocaleString("zh-CN")} subValue="当前筛选窗口内" />
-          <DataCard label="令牌消耗" value={formatCompactNumber(row.totalTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="输入令牌" value={formatCompactNumber(row.inputTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="输出令牌" value={formatCompactNumber(row.outputTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="总令牌" value={formatCompactNumber(row.totalTokens)} subValue="当前筛选窗口内累计" />
         </div>
 
-        <div className="ds-divider ds-dialog-grid px-4 py-4 sm:px-6 sm:py-6 md:grid-cols-3">
+        <div className="ds-divider ds-dialog-grid px-4 py-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-5">
           <DataCard label="首次调用" value={formatDateTime(row.detail.firstUsedAt)} subValue="当前筛选窗口内首次记录" />
           <DataCard label="过期时间" value={formatDateTime(row.expiredTime)} subValue={row.expiredTime < 0 ? "未设置" : "北京时间"} />
-          <DataCard
-            label="平均每次消耗"
-            value={formatCompactNumber(row.requestCount > 0 ? row.totalTokens / row.requestCount : 0)}
-            subValue="令牌 / 请求"
-          />
+          <DataCard label="平均输入 / 请求" value={formatCompactNumber(averageInputTokens)} subValue="当前筛选窗口内" />
+          <DataCard label="平均输出 / 请求" value={formatCompactNumber(averageOutputTokens)} subValue="当前筛选窗口内" />
+          <DataCard label="平均总令牌 / 请求" value={formatCompactNumber(averageTotalTokens)} subValue="当前筛选窗口内" />
         </div>
 
         <div className="ds-divider grid gap-4 px-4 py-4 sm:px-6 sm:py-6 xl:grid-cols-2">
@@ -81,7 +85,8 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
             rows={row.detail.models.map((model) => ({
               key: model.modelName,
               title: model.modelName,
-              metric: formatCompactNumber(model.totalTokens),
+              metric: `总 ${formatCompactNumber(model.totalTokens)}`,
+              subMetric: `输入 ${formatCompactNumber(model.inputTokens)} · 输出 ${formatCompactNumber(model.outputTokens)}`,
               meta: `请求 ${model.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(model.latestUsedAt)}`,
             }))}
           />
@@ -92,7 +97,8 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
             rows={row.detail.channels.map((channel) => ({
               key: `${channel.channelId}-${channel.channelName}`,
               title: channel.channelName,
-              metric: formatCompactNumber(channel.totalTokens),
+              metric: `总 ${formatCompactNumber(channel.totalTokens)}`,
+              subMetric: `输入 ${formatCompactNumber(channel.inputTokens)} · 输出 ${formatCompactNumber(channel.outputTokens)}`,
               meta: `请求 ${channel.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(channel.latestUsedAt)}`,
             }))}
           />
@@ -132,6 +138,7 @@ interface BreakdownPanelProps {
     key: string;
     title: string;
     metric: string;
+    subMetric: string;
     meta: string;
   }>;
 }
@@ -141,7 +148,7 @@ function BreakdownPanel({ title, emptyText, rows }: BreakdownPanelProps) {
     <section className="ds-card px-4 py-4 sm:px-5 sm:py-5">
       <div className="ds-divider mb-4 flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between">
         <h4 className="text-[0.92rem] font-semibold tracking-[-0.03em] text-[var(--foreground)]">{title}</h4>
-        <span className="ds-kicker text-[0.56rem] text-[var(--foreground-faint)]">按令牌消耗排序</span>
+        <span className="ds-kicker text-[0.56rem] text-[var(--foreground-faint)]">按总令牌排序</span>
       </div>
 
       {rows.length === 0 ? (
@@ -155,7 +162,10 @@ function BreakdownPanel({ title, emptyText, rows }: BreakdownPanelProps) {
                   <p className="ds-table-rank">#{String(index + 1).padStart(2, "0")}</p>
                   <h5 className="mt-2 break-words text-[0.88rem] font-semibold text-[var(--foreground)]">{row.title}</h5>
                 </div>
-                <p className="shrink-0 ds-mono text-[0.88rem] font-semibold tracking-[-0.04em] text-[var(--foreground)]">{row.metric}</p>
+                <div className="shrink-0 text-right">
+                  <p className="ds-mono text-[0.88rem] font-semibold tracking-[-0.04em] text-[var(--foreground)]">{row.metric}</p>
+                  <p className="mt-1 text-[0.68rem] text-[var(--foreground-soft)]">{row.subMetric}</p>
+                </div>
               </div>
               <p className="mt-3 text-[0.72rem] text-[var(--foreground-soft)]">{row.meta}</p>
             </article>

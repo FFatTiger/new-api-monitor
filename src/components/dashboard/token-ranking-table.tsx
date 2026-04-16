@@ -30,6 +30,8 @@ interface RankingViewRow {
   name: string;
   info: string;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
   onSelect?: () => void;
@@ -62,7 +64,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     name: "密钥",
     info: "用户",
     requestCount: "请求",
-    totalTokens: "令牌",
+    totalTokens: "总令牌",
     latestUsedAt: "最近调用",
   },
   user: {
@@ -70,7 +72,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     name: "用户",
     info: "显示名",
     requestCount: "请求",
-    totalTokens: "令牌",
+    totalTokens: "总令牌",
     latestUsedAt: "最近调用",
   },
   model: {
@@ -78,7 +80,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     name: "模型",
     info: "说明",
     requestCount: "请求",
-    totalTokens: "令牌",
+    totalTokens: "总令牌",
     latestUsedAt: "最近调用",
   },
   channel: {
@@ -86,7 +88,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     name: "渠道",
     info: "状态",
     requestCount: "请求",
-    totalTokens: "令牌",
+    totalTokens: "总令牌",
     latestUsedAt: "最近调用",
   },
 };
@@ -142,6 +144,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         name: row.tokenName,
         info: row.username,
         requestCount: row.requestCount,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         latestUsedAt: row.latestUsedAt,
         onSelect: () => openRow(row),
@@ -156,6 +160,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         name: row.username,
         info: "",
         requestCount: row.requestCount,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         latestUsedAt: row.latestUsedAt,
       })),
@@ -169,6 +175,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         name: row.modelName,
         info: "",
         requestCount: row.requestCount,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         latestUsedAt: row.latestUsedAt,
       })),
@@ -182,6 +190,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         name: row.channelName,
         info: formatStatus(row.status),
         requestCount: row.requestCount,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         latestUsedAt: row.latestUsedAt,
       })),
@@ -281,7 +291,13 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                 榜首 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.name}</span>
               </span>
               <span>
-                令牌 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.totalTokens)}</span>
+                输入 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.inputTokens)}</span>
+              </span>
+              <span>
+                输出 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.outputTokens)}</span>
+              </span>
+              <span>
+                总令牌 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.totalTokens)}</span>
               </span>
               <span>
                 请求 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.requestCount.toLocaleString("zh-CN")}</span>
@@ -329,11 +345,20 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   </div>
 
                   <div className="shrink-0 text-right">
-                    <p className="ds-kicker text-[0.56rem] text-[var(--foreground-faint)]">令牌</p>
+                    <p className="ds-kicker text-[0.56rem] text-[var(--foreground-faint)]">总令牌</p>
                     <p className="mt-1.5 ds-mono text-[0.96rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">
                       {formatCompactNumber(row.totalTokens)}
                     </p>
                   </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[0.72rem] text-[var(--foreground-soft)]">
+                  <span>
+                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.inputTokens)}</span>
+                  </span>
+                  <span className="text-right">
+                    输出 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.outputTokens)}</span>
+                  </span>
                 </div>
 
                 <div className="ds-mobile-meta mt-3 grid grid-cols-2 gap-2 pt-3 text-[0.74rem] text-[var(--foreground-soft)]">
@@ -368,9 +393,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
 
         <div key={`desktop-${activeDimension}`} className="hidden md:block">
           <div className="ds-table-shell overflow-x-auto">
-            <table
-              className={`w-full border-collapse text-left text-sm text-[var(--foreground)] ${activeView.infoLabel ? "min-w-[820px]" : "min-w-[720px]"}`}
-            >
+            <table className="min-w-[1080px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
               <thead>
                 <tr className="text-[0.64rem] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                   <SortableHeader label="#" sortKey="rank" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
@@ -391,7 +414,9 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                     />
                   ) : null}
                   <SortableHeader label="请求" sortKey="requestCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
-                  <SortableHeader label="令牌" sortKey="totalTokens" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
+                  <th className="px-4 py-3 text-right">输入</th>
+                  <th className="px-4 py-3 text-right">输出</th>
+                  <SortableHeader label="总令牌" sortKey="totalTokens" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                   <SortableHeader
                     label="最近调用"
                     sortKey="latestUsedAt"
@@ -425,6 +450,12 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                     ) : null}
                     <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
                       {row.requestCount.toLocaleString("zh-CN")}
+                    </td>
+                    <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
+                      {formatCompactNumber(row.inputTokens)}
+                    </td>
+                    <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
+                      {formatCompactNumber(row.outputTokens)}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.94rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">
                       {formatCompactNumber(row.totalTokens)}

@@ -18,8 +18,8 @@ export interface DashboardFilters {
   username: string;
   model: string;
   channelId: string;
-  startDate: string;
-  endDate: string;
+  startInput: string;
+  endInput: string;
   startTimestamp: number | null;
   endTimestamp: number | null;
   granularity: TrendGranularity;
@@ -28,6 +28,8 @@ export interface DashboardFilters {
 
 export interface SummaryMetrics {
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   activeTokenCount: number;
   activeUserCount: number;
@@ -37,6 +39,8 @@ export interface SummaryMetrics {
 export interface TokenDetailModelRow {
   modelName: string;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
 }
@@ -45,6 +49,8 @@ export interface TokenDetailChannelRow {
   channelId: number;
   channelName: string;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
 }
@@ -65,6 +71,8 @@ export interface TokenRankingRow {
   status: number;
   expiredTime: number;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
   detail: TokenDetailData;
@@ -76,6 +84,8 @@ export interface UserRankingRow {
   displayName: string;
   status: number;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
 }
@@ -83,6 +93,8 @@ export interface UserRankingRow {
 export interface ModelRankingRow {
   modelName: string;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
 }
@@ -93,6 +105,8 @@ export interface ChannelRankingRow {
   type: number;
   status: number;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
   latestUsedAt: number;
 }
@@ -134,6 +148,8 @@ export interface ChannelStabilityRow {
 export interface TrendPoint {
   bucketTs: number;
   requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
   totalTokens: number;
 }
 
@@ -206,6 +222,15 @@ const shanghaiDatePartsFormatter = new Intl.DateTimeFormat("en-CA", {
   month: "2-digit",
   day: "2-digit",
 });
+const shanghaiDateTimePartsFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: SHANGHAI_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 function getShanghaiDateParts(date: Date) {
   const parts = shanghaiDatePartsFormatter.formatToParts(date);
@@ -216,20 +241,33 @@ function getShanghaiDateParts(date: Date) {
   return { year, month, day };
 }
 
-function parseShanghaiDateInput(value: string, endOfDay = false) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+function getShanghaiDateTimeParts(date: Date) {
+  const parts = shanghaiDateTimePartsFormatter.formatToParts(date);
+  const year = Number(parts.find((part) => part.type === "year")?.value ?? "0");
+  const month = Number(parts.find((part) => part.type === "month")?.value ?? "0");
+  const day = Number(parts.find((part) => part.type === "day")?.value ?? "0");
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+
+  return { year, month, day, hour, minute };
+}
+
+function parseShanghaiDateTimeInput(value: string, endOfMinute = false) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
     return null;
   }
 
-  const [year, month, day] = value.split("-").map(Number);
-  const baseUtcSeconds = Date.UTC(year, month - 1, day, 0, 0, 0) / 1000;
+  const [datePart, timePart] = value.split("T");
+  const [year, month, day] = datePart.split("-").map(Number);
+  const [hour, minute] = timePart.split(":").map(Number);
+  const baseUtcSeconds = Date.UTC(year, month - 1, day, hour, minute, 0) / 1000;
 
-  return baseUtcSeconds + (endOfDay ? 16 * 60 * 60 - 1 : -8 * 60 * 60);
+  return baseUtcSeconds - 8 * 60 * 60 + (endOfMinute ? 59 : 0);
 }
 
-function formatDateInput(timestamp: number) {
-  const { year, month, day } = getShanghaiDateParts(new Date(timestamp * 1000));
-  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+function formatDateTimeInput(timestamp: number) {
+  const { year, month, day, hour, minute } = getShanghaiDateTimeParts(new Date(timestamp * 1000));
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 function getTodayRangeInShanghai() {
@@ -237,9 +275,10 @@ function getTodayRangeInShanghai() {
   const dateString = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
   return {
-    dateString,
-    startTimestamp: parseShanghaiDateInput(dateString, false),
-    endTimestamp: parseShanghaiDateInput(dateString, true),
+    startInput: `${dateString}T00:00`,
+    endInput: `${dateString}T23:59`,
+    startTimestamp: parseShanghaiDateTimeInput(`${dateString}T00:00`, false),
+    endTimestamp: parseShanghaiDateTimeInput(`${dateString}T23:59`, true),
   };
 }
 
@@ -257,7 +296,7 @@ function getWindowLabel(
   }
 
   if (preset === "custom" && startTimestamp && endTimestamp) {
-    return `${formatDateInput(startTimestamp)} 至 ${formatDateInput(endTimestamp)}`;
+    return `${formatDateTimeInput(startTimestamp)} 至 ${formatDateTimeInput(endTimestamp)}`;
   }
 
   if (preset === "24h") {
@@ -282,8 +321,8 @@ function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, max
   const username = cleanText(getFirstValue(searchParams.username), 64);
   const model = cleanText(normalizeModelName(getFirstValue(searchParams.model)), 128);
   const channelId = cleanText(getFirstValue(searchParams.channelId), 20);
-  const startDate = cleanText(getFirstValue(searchParams.start), 10);
-  const endDate = cleanText(getFirstValue(searchParams.end), 10);
+  const startInput = cleanText(getFirstValue(searchParams.start), 16);
+  const endInput = cleanText(getFirstValue(searchParams.end), 16);
   const todayRange = getTodayRangeInShanghai();
 
   let startTimestamp: number | null = null;
@@ -293,8 +332,8 @@ function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, max
     startTimestamp = todayRange.startTimestamp ?? minTimestamp;
     endTimestamp = todayRange.endTimestamp ?? maxTimestamp;
   } else if (preset === "custom") {
-    startTimestamp = parseShanghaiDateInput(startDate, false) ?? minTimestamp;
-    endTimestamp = parseShanghaiDateInput(endDate, true) ?? maxTimestamp;
+    startTimestamp = parseShanghaiDateTimeInput(startInput, false) ?? minTimestamp;
+    endTimestamp = parseShanghaiDateTimeInput(endInput, true) ?? maxTimestamp;
   } else if (preset === "all") {
     startTimestamp = null;
     endTimestamp = null;
@@ -318,8 +357,8 @@ function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, max
     username,
     model,
     channelId,
-    startDate: preset === "today" ? todayRange.dateString : startDate,
-    endDate: preset === "today" ? todayRange.dateString : endDate,
+    startInput: preset === "today" ? todayRange.startInput : startInput,
+    endInput: preset === "today" ? todayRange.endInput : endInput,
     startTimestamp,
     endTimestamp,
     granularity,
@@ -464,6 +503,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
   ] = await Promise.all([
     query<{
       request_count: string | number;
+      input_tokens: string | number;
+      output_tokens: string | number;
       total_tokens: string | number;
       active_token_count: string | number;
       active_user_count: string | number;
@@ -472,6 +513,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       `
         SELECT
           COUNT(*) AS request_count,
+          COALESCE(SUM(l.prompt_tokens), 0) AS input_tokens,
+          COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
           COUNT(DISTINCT NULLIF(l.token_id, 0)) AS active_token_count,
           COUNT(DISTINCT l.user_id) AS active_user_count,
@@ -510,6 +553,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       status: string | number;
       expired_time: string | number;
       request_count: string | number;
+      input_tokens: string | number;
+      output_tokens: string | number;
       total_tokens: string | number;
       latest_used_at: string | number;
     }>(
@@ -533,6 +578,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             MAX(user_id) AS user_id,
             MAX(NULLIF(username, '')) AS log_username,
             COUNT(*) AS request_count,
+            COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+            COALESCE(SUM(completion_tokens), 0) AS output_tokens,
             COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
@@ -546,6 +593,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(tokens.status, -1) AS status,
           COALESCE(tokens.expired_time, -1) AS expired_time,
           aggregated.request_count,
+          aggregated.input_tokens,
+          aggregated.output_tokens,
           aggregated.total_tokens,
           aggregated.latest_used_at
         FROM aggregated
@@ -562,6 +611,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       display_name: string;
       status: string | number;
       request_count: string | number;
+      input_tokens: string | number;
+      output_tokens: string | number;
       total_tokens: string | number;
       latest_used_at: string | number;
     }>(
@@ -576,6 +627,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(user_id, 0) AS user_id,
             COALESCE(NULLIF(username, ''), 'Unknown') AS log_username,
             COUNT(*) AS request_count,
+            COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+            COALESCE(SUM(completion_tokens), 0) AS output_tokens,
             COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
@@ -587,6 +640,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(users.display_name, '') AS display_name,
           COALESCE(users.status, -1) AS status,
           aggregated.request_count,
+          aggregated.input_tokens,
+          aggregated.output_tokens,
           aggregated.total_tokens,
           aggregated.latest_used_at
         FROM aggregated
@@ -599,6 +654,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     query<{
       model_name: string;
       request_count: string | number;
+      input_tokens: string | number;
+      output_tokens: string | number;
       total_tokens: string | number;
       latest_used_at: string | number;
     }>(
@@ -606,6 +663,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         SELECT
           ${normalizedModelSql} AS model_name,
           COUNT(*) AS request_count,
+          COALESCE(SUM(l.prompt_tokens), 0) AS input_tokens,
+          COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
           MAX(l.created_at) AS latest_used_at
         FROM logs l
@@ -622,6 +681,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       type: string | number;
       status: string | number;
       request_count: string | number;
+      input_tokens: string | number;
+      output_tokens: string | number;
       total_tokens: string | number;
       latest_used_at: string | number;
     }>(
@@ -641,6 +702,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(channel_id, 0) AS channel_id,
             MAX(NULLIF(channel_name, '')) AS log_channel_name,
             COUNT(*) AS request_count,
+            COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+            COALESCE(SUM(completion_tokens), 0) AS output_tokens,
             COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
@@ -652,6 +715,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(channels.type, -1) AS type,
           COALESCE(channels.status, -1) AS status,
           aggregated.request_count,
+          aggregated.input_tokens,
+          aggregated.output_tokens,
           aggregated.total_tokens,
           aggregated.latest_used_at
         FROM aggregated
@@ -742,12 +807,16 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     query<{
       bucket_ts: string | number;
       request_count: string | number;
+      input_tokens: string | number;
+      output_tokens: string | number;
       total_tokens: string | number;
     }>(
       `
         SELECT
           EXTRACT(EPOCH FROM date_trunc('${trendBucket}', to_timestamp(l.created_at))) AS bucket_ts,
           COUNT(*) AS request_count,
+          COALESCE(SUM(l.prompt_tokens), 0) AS input_tokens,
+          COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens
         FROM logs l
         ${whereSql}
@@ -797,6 +866,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     status: toNumber(row.status, -1),
     expiredTime: toNumber(row.expired_time, -1),
     requestCount: toNumber(row.request_count),
+    inputTokens: toNumber(row.input_tokens),
+    outputTokens: toNumber(row.output_tokens),
     totalTokens: toNumber(row.total_tokens),
     latestUsedAt: toNumber(row.latest_used_at),
   }));
@@ -858,6 +929,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         token_name: string;
         model_name: string;
         request_count: string | number;
+        input_tokens: string | number;
+        output_tokens: string | number;
         total_tokens: string | number;
         latest_used_at: string | number;
       }>(
@@ -868,6 +941,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               token_name,
               normalized_model AS model_name,
               COUNT(*) AS request_count,
+              COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+              COALESCE(SUM(completion_tokens), 0) AS output_tokens,
               COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
               MAX(created_at) AS latest_used_at
             FROM matched_logs
@@ -888,6 +963,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             token_name,
             model_name,
             request_count,
+            input_tokens,
+            output_tokens,
             total_tokens,
             latest_used_at
           FROM ranked
@@ -902,6 +979,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         channel_id: string | number;
         channel_name: string;
         request_count: string | number;
+        input_tokens: string | number;
+        output_tokens: string | number;
         total_tokens: string | number;
         latest_used_at: string | number;
       }>(
@@ -917,6 +996,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
                 CONCAT('渠道 ', matched_logs.channel_id::text)
               ) AS channel_name,
               COUNT(*) AS request_count,
+              COALESCE(SUM(matched_logs.prompt_tokens), 0) AS input_tokens,
+              COALESCE(SUM(matched_logs.completion_tokens), 0) AS output_tokens,
               COALESCE(SUM(matched_logs.prompt_tokens + matched_logs.completion_tokens), 0) AS total_tokens,
               MAX(matched_logs.created_at) AS latest_used_at
             FROM matched_logs
@@ -939,6 +1020,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             channel_id,
             channel_name,
             request_count,
+            input_tokens,
+            output_tokens,
             total_tokens,
             latest_used_at
           FROM ranked
@@ -969,6 +1052,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       current.models.push({
         modelName: row.model_name,
         requestCount: toNumber(row.request_count),
+        inputTokens: toNumber(row.input_tokens),
+        outputTokens: toNumber(row.output_tokens),
         totalTokens: toNumber(row.total_tokens),
         latestUsedAt: toNumber(row.latest_used_at),
       });
@@ -982,6 +1067,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         channelId: toNumber(row.channel_id),
         channelName: row.channel_name,
         requestCount: toNumber(row.request_count),
+        inputTokens: toNumber(row.input_tokens),
+        outputTokens: toNumber(row.output_tokens),
         totalTokens: toNumber(row.total_tokens),
         latestUsedAt: toNumber(row.latest_used_at),
       });
@@ -996,6 +1083,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     filters,
     summary: {
       requestCount: toNumber(summaryRow?.request_count),
+      inputTokens: toNumber(summaryRow?.input_tokens),
+      outputTokens: toNumber(summaryRow?.output_tokens),
       totalTokens: toNumber(summaryRow?.total_tokens),
       activeTokenCount: toNumber(summaryRow?.active_token_count),
       activeUserCount: toNumber(summaryRow?.active_user_count),
@@ -1019,12 +1108,16 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       displayName: row.display_name,
       status: toNumber(row.status, -1),
       requestCount: toNumber(row.request_count),
+      inputTokens: toNumber(row.input_tokens),
+      outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     modelRankings: modelResult.rows.map((row) => ({
       modelName: row.model_name,
       requestCount: toNumber(row.request_count),
+      inputTokens: toNumber(row.input_tokens),
+      outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
@@ -1034,6 +1127,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       type: toNumber(row.type, -1),
       status: toNumber(row.status, -1),
       requestCount: toNumber(row.request_count),
+      inputTokens: toNumber(row.input_tokens),
+      outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
@@ -1063,6 +1158,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     trend: trendResult.rows.map((row) => ({
       bucketTs: toNumber(row.bucket_ts),
       requestCount: toNumber(row.request_count),
+      inputTokens: toNumber(row.input_tokens),
+      outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
     })),
     usernameOptions: usernameOptionResult.rows.map((row) => ({

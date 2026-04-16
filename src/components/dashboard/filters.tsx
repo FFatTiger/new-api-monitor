@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
+import Link from "next/link";
 
 import type { DashboardFilters, FilterOption, FilterPreset } from "@/lib/queries/dashboard";
 
@@ -34,12 +34,16 @@ export function DashboardHeaderControls({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogPreset, setDialogPreset] = useState<FilterPreset>(filters.preset);
   const [quickPreset, setQuickPreset] = useState<FilterPreset>(filters.preset);
+  const [customStartInput, setCustomStartInput] = useState(filters.startInput);
+  const [customEndInput, setCustomEndInput] = useState(filters.endInput);
 
   const closeDialog = useCallback(() => {
     setDialogOpen(false);
     setDialogPreset(filters.preset);
     setQuickPreset(filters.preset);
-  }, [filters.preset]);
+    setCustomStartInput(filters.startInput);
+    setCustomEndInput(filters.endInput);
+  }, [filters.endInput, filters.preset, filters.startInput]);
 
   useEffect(() => {
     if (!dialogOpen) {
@@ -69,7 +73,7 @@ export function DashboardHeaderControls({
     event.currentTarget.form?.requestSubmit();
   }
 
-  const showCustomDate = dialogPreset === "custom";
+  const showCustomDateTime = dialogPreset === "custom";
 
   return (
     <>
@@ -190,19 +194,36 @@ export function DashboardHeaderControls({
                 </select>
               </label>
 
-              {showCustomDate ? (
+              {showCustomDateTime ? (
                 <>
                   <label className={labelClass}>
                     <span>开始时间</span>
-                    <input name="start" type="date" defaultValue={filters.startDate} className={fieldClass} />
+                    <input
+                      name="start"
+                      type="datetime-local"
+                      value={customStartInput}
+                      onChange={(event) => setCustomStartInput(event.target.value)}
+                      className={fieldClass}
+                    />
                   </label>
 
                   <label className={labelClass}>
                     <span>结束时间</span>
-                    <input name="end" type="date" defaultValue={filters.endDate} className={fieldClass} />
+                    <input
+                      name="end"
+                      type="datetime-local"
+                      value={customEndInput}
+                      onChange={(event) => setCustomEndInput(event.target.value)}
+                      className={fieldClass}
+                    />
                   </label>
                 </>
-              ) : null}
+              ) : (
+                <>
+                  {customStartInput ? <input type="hidden" name="start" value={customStartInput} /> : null}
+                  {customEndInput ? <input type="hidden" name="end" value={customEndInput} /> : null}
+                </>
+              )}
 
               <div className="flex flex-col gap-2 pt-1 sm:col-span-2 sm:flex-row sm:justify-end">
                 <button type="submit" className="ds-button-primary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
@@ -227,8 +248,8 @@ function PersistedFilterInputs({ filters }: { filters: DashboardFilters }) {
       {filters.username ? <input type="hidden" name="username" value={filters.username} /> : null}
       {filters.model ? <input type="hidden" name="model" value={filters.model} /> : null}
       {filters.channelId ? <input type="hidden" name="channelId" value={filters.channelId} /> : null}
-      {filters.startDate ? <input type="hidden" name="start" value={filters.startDate} /> : null}
-      {filters.endDate ? <input type="hidden" name="end" value={filters.endDate} /> : null}
+      {filters.startInput ? <input type="hidden" name="start" value={filters.startInput} /> : null}
+      {filters.endInput ? <input type="hidden" name="end" value={filters.endInput} /> : null}
     </>
   );
 }
