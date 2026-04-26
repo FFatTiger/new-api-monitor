@@ -291,7 +291,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
           </div>
 
           {leader ? (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.78rem] text-[var(--foreground-soft)]">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[0.82rem] text-[var(--foreground-soft)]">
               <span>
                 榜首 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.name}</span>
               </span>
@@ -330,7 +330,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
           <button
             type="button"
             onClick={() => setSortDirection((current) => (current === "asc" ? "desc" : "asc"))}
-            className="ds-button-secondary h-10 self-end px-3 text-[0.74rem] font-medium"
+            className="ds-button-secondary h-10 self-end px-3 text-[0.79rem] font-medium"
           >
             {sortDirection === "desc" ? "降序" : "升序"}
           </button>
@@ -346,7 +346,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                       <span className="ds-table-rank">#{String(index + 1).padStart(2, "0")}</span>
                       <p className="truncate text-[0.96rem] font-semibold text-[var(--foreground)]">{row.name}</p>
                     </div>
-                    {row.info ? <p className="mt-1 text-[0.76rem] text-[var(--foreground-muted)]">{row.info}</p> : null}
+                    {row.info ? <p className="mt-1 text-[0.81rem] text-[var(--foreground-muted)]">{row.info}</p> : null}
                   </div>
 
                   <div className="shrink-0 text-right">
@@ -357,7 +357,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   </div>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-2 text-[0.72rem] text-[var(--foreground-soft)]">
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[0.77rem] text-[var(--foreground-soft)]">
                   <span>
                     输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatInputWithCache(row.inputTokens, row.cacheTokens)}</span>
                   </span>
@@ -366,7 +366,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   </span>
                 </div>
 
-                <div className="ds-mobile-meta mt-3 grid grid-cols-2 gap-2 pt-3 text-[0.74rem] text-[var(--foreground-soft)]">
+                <div className="ds-mobile-meta mt-3 grid grid-cols-2 gap-2 pt-3 text-[0.79rem] text-[var(--foreground-soft)]">
                   <span>
                     请求 <span className="ml-1 ds-mono text-[var(--foreground)]">{row.requestCount.toLocaleString("zh-CN")}</span>
                   </span>
@@ -400,7 +400,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
           <div className="ds-table-shell overflow-x-auto">
             <table className="min-w-[1080px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
               <thead>
-                <tr className="text-[0.64rem] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
+                <tr className="text-[0.7rem] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                   <SortableHeader label="#" sortKey="rank" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
                   <SortableHeader
                     label={activeView.nameLabel}
@@ -451,21 +451,21 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                       )}
                     </td>
                     {activeView.infoLabel ? (
-                      <td className="px-4 py-3 text-[0.78rem] text-[var(--foreground-muted)]">{row.info || "-"}</td>
+                      <td className="px-4 py-3 text-[0.82rem] text-[var(--foreground-muted)]">{row.info || "-"}</td>
                     ) : null}
-                    <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
+                    <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
                       {row.requestCount.toLocaleString("zh-CN")}
                     </td>
-                    <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
+                    <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
                       {formatInputWithCache(row.inputTokens, row.cacheTokens)}
                     </td>
-                    <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
+                    <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
                       {formatCompactNumber(row.outputTokens)}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.94rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">
                       {formatCompactNumber(row.totalTokens)}
                     </td>
-                    <td className="px-4 py-3 text-[0.74rem] text-[var(--foreground-soft)]">{formatDateTime(row.latestUsedAt)}</td>
+                    <td className="px-4 py-3 text-[0.79rem] text-[var(--foreground-soft)]">{formatDateTime(row.latestUsedAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -507,7 +507,7 @@ function SortableHeader({
         className={`inline-flex items-center gap-1 whitespace-nowrap transition hover:text-[var(--foreground)] ${align === "right" ? "ml-auto" : ""}`}
       >
         <span>{label}</span>
-        <span className={`text-[0.72rem] ${isActive ? "text-[var(--foreground)]" : "text-[var(--foreground-faint)]"}`}>
+        <span className={`text-[0.77rem] ${isActive ? "text-[var(--foreground)]" : "text-[var(--foreground-faint)]"}`}>
           {indicator}
         </span>
       </button>
