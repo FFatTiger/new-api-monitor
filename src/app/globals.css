@@ -109,6 +109,7 @@
 html {
   scroll-behavior: smooth;
   background: var(--background);
+  font-size: 17px;
 }
 
 body {
