@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { formatCompactNumber, formatDateTime, formatInputWithCache, formatStatus } from "@/lib/format";
 import type { TokenRankingRow } from "@/lib/queries/dashboard";
@@ -86,7 +86,11 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
               key: model.modelName,
               title: model.modelName,
               metric: `总 ${formatCompactNumber(model.totalTokens)}`,
-              subMetric: `输入 ${formatInputWithCache(model.inputTokens, model.cacheTokens)} · 输出 ${formatCompactNumber(model.outputTokens)}`,
+              subMetric: (
+                <>
+                  输入 {formatInputWithCache(model.inputTokens, model.cacheTokens)} · 输出 {formatCompactNumber(model.outputTokens)}
+                </>
+              ),
               meta: `请求 ${model.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(model.latestUsedAt)}`,
             }))}
           />
@@ -98,7 +102,11 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
               key: `${channel.channelId}-${channel.channelName}`,
               title: channel.channelName,
               metric: `总 ${formatCompactNumber(channel.totalTokens)}`,
-              subMetric: `输入 ${formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 ${formatCompactNumber(channel.outputTokens)}`,
+              subMetric: (
+                <>
+                  输入 {formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 {formatCompactNumber(channel.outputTokens)}
+                </>
+              ),
               meta: `请求 ${channel.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(channel.latestUsedAt)}`,
             }))}
           />
@@ -115,7 +123,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
 
 interface DataCardProps {
   label: string;
-  value: string;
+  value: ReactNode;
   subValue: string;
 }
 
@@ -138,7 +146,7 @@ interface BreakdownPanelProps {
     key: string;
     title: string;
     metric: string;
-    subMetric: string;
+    subMetric: ReactNode;
     meta: string;
   }>;
 }

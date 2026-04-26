@@ -1,3 +1,5 @@
+import type { ReactElement } from "react";
+
 const integerFormatter = new Intl.NumberFormat("zh-CN");
 const compactFormatter = new Intl.NumberFormat("zh-CN", {
   notation: "compact",
@@ -42,10 +44,17 @@ export function formatCompactNumber(value: number) {
   return compactFormatter.format(value);
 }
 
-export function formatInputWithCache(inputTokens: number, cacheTokens: number) {
+export function formatInputWithCache(inputTokens: number, cacheTokens: number): string | ReactElement {
   const input = formatCompactNumber(inputTokens);
   if (cacheTokens > 0) {
-    return `${input} (缓存 ${formatCompactNumber(cacheTokens)})`;
+    return (
+      <>
+        {input}{" "}
+        <span className="text-[0.72em] text-[var(--foreground-muted)]">
+          (Cache {formatCompactNumber(cacheTokens)})
+        </span>
+      </>
+    );
   }
   return input;
 }
