@@ -42,6 +42,14 @@ export function formatCompactNumber(value: number) {
   return compactFormatter.format(value);
 }
 
+export function formatInputWithCache(inputTokens: number, cacheTokens: number) {
+  const input = formatCompactNumber(inputTokens);
+  if (cacheTokens > 0) {
+    return `${input} (缓存 ${formatCompactNumber(cacheTokens)})`;
+  }
+  return input;
+}
+
 export function formatPercent(value: number | null | undefined) {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     return "-";

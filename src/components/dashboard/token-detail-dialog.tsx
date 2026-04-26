@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { formatCompactNumber, formatDateTime, formatStatus } from "@/lib/format";
+import { formatCompactNumber, formatDateTime, formatInputWithCache, formatStatus } from "@/lib/format";
 import type { TokenRankingRow } from "@/lib/queries/dashboard";
 
 interface TokenDetailDialogProps {
@@ -65,7 +65,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
           <DataCard label="用户名" value={row.username} subValue={row.displayName || "-"} />
           <DataCard label="状态" value={formatStatus(row.status)} subValue={`最近调用 ${formatDateTime(row.latestUsedAt)}`} />
           <DataCard label="请求数" value={row.requestCount.toLocaleString("zh-CN")} subValue="当前筛选窗口内" />
-          <DataCard label="输入令牌" value={formatCompactNumber(row.inputTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="输入令牌" value={formatInputWithCache(row.inputTokens, row.cacheTokens)} subValue="当前筛选窗口内累计" />
           <DataCard label="输出令牌" value={formatCompactNumber(row.outputTokens)} subValue="当前筛选窗口内累计" />
           <DataCard label="总令牌" value={formatCompactNumber(row.totalTokens)} subValue="当前筛选窗口内累计" />
         </div>
@@ -86,7 +86,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
               key: model.modelName,
               title: model.modelName,
               metric: `总 ${formatCompactNumber(model.totalTokens)}`,
-              subMetric: `输入 ${formatCompactNumber(model.inputTokens)} · 输出 ${formatCompactNumber(model.outputTokens)}`,
+              subMetric: `输入 ${formatInputWithCache(model.inputTokens, model.cacheTokens)} · 输出 ${formatCompactNumber(model.outputTokens)}`,
               meta: `请求 ${model.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(model.latestUsedAt)}`,
             }))}
           />
@@ -98,7 +98,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
               key: `${channel.channelId}-${channel.channelName}`,
               title: channel.channelName,
               metric: `总 ${formatCompactNumber(channel.totalTokens)}`,
-              subMetric: `输入 ${formatCompactNumber(channel.inputTokens)} · 输出 ${formatCompactNumber(channel.outputTokens)}`,
+              subMetric: `输入 ${formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 ${formatCompactNumber(channel.outputTokens)}`,
               meta: `请求 ${channel.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(channel.latestUsedAt)}`,
             }))}
           />

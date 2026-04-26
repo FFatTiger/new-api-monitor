@@ -6,7 +6,7 @@ import {
   TokenDetailDialog,
   useTokenDetailDialog,
 } from "@/components/dashboard/token-detail-dialog";
-import { formatCompactNumber, formatDateTime, formatStatus } from "@/lib/format";
+import { formatCompactNumber, formatDateTime, formatInputWithCache, formatStatus } from "@/lib/format";
 import type {
   ChannelRankingRow,
   ModelRankingRow,
@@ -33,6 +33,7 @@ interface RankingViewRow {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cacheTokens: number;
   latestUsedAt: number;
   onSelect?: () => void;
 }
@@ -147,6 +148,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         inputTokens: row.inputTokens,
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
+        cacheTokens: row.cacheTokens,
         latestUsedAt: row.latestUsedAt,
         onSelect: () => openRow(row),
       })),
@@ -163,6 +165,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         inputTokens: row.inputTokens,
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
+        cacheTokens: row.cacheTokens,
         latestUsedAt: row.latestUsedAt,
       })),
     [userRows],
@@ -178,6 +181,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         inputTokens: row.inputTokens,
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
+        cacheTokens: row.cacheTokens,
         latestUsedAt: row.latestUsedAt,
       })),
     [modelRows],
@@ -193,6 +197,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         inputTokens: row.inputTokens,
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
+        cacheTokens: row.cacheTokens,
         latestUsedAt: row.latestUsedAt,
       })),
     [channelRows],
@@ -291,7 +296,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                 榜首 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.name}</span>
               </span>
               <span>
-                输入 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.inputTokens)}</span>
+                输入 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatInputWithCache(leader.inputTokens, leader.cacheTokens)}</span>
               </span>
               <span>
                 输出 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.outputTokens)}</span>
@@ -354,7 +359,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-[0.72rem] text-[var(--foreground-soft)]">
                   <span>
-                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.inputTokens)}</span>
+                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatInputWithCache(row.inputTokens, row.cacheTokens)}</span>
                   </span>
                   <span className="text-right">
                     输出 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.outputTokens)}</span>
@@ -452,7 +457,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                       {row.requestCount.toLocaleString("zh-CN")}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
-                      {formatCompactNumber(row.inputTokens)}
+                      {formatInputWithCache(row.inputTokens, row.cacheTokens)}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">
                       {formatCompactNumber(row.outputTokens)}
