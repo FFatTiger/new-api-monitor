@@ -1,10 +1,7 @@
-import type { ReactNode } from "react";
-
 import {
   formatCompactNumber,
   formatDurationMsAsSeconds,
   formatDurationSeconds,
-  formatInputWithCache,
   formatInteger,
   formatPercent,
 } from "@/lib/format";
@@ -20,7 +17,7 @@ const cards: Array<{
   label: string;
   foot: string;
   getValue: (summary: SummaryMetrics, stabilitySummary: StabilitySummary) => number | null;
-  format: (value: number | null, summary: SummaryMetrics, stability: StabilitySummary) => ReactNode;
+  format: (value: number | null) => string;
   valueClassName: string;
 }> = [
   {
@@ -36,7 +33,7 @@ const cards: Array<{
     label: "输入令牌",
     foot: "输入",
     getValue: (summary) => summary.inputTokens,
-    format: (value, summary) => formatInputWithCache(value ?? 0, summary.cacheTokens),
+    format: (value) => formatCompactNumber(value ?? 0),
     valueClassName: "text-[var(--foreground)]",
   },
   {
@@ -133,7 +130,7 @@ export function SummaryCards({ summary, stabilitySummary }: SummaryCardsProps) {
                 <p
                   className={`ds-mono text-[1.18rem] font-semibold leading-none tracking-[-0.07em] sm:text-[1.45rem] ${card.valueClassName}`}
                 >
-                  {card.format(value, summary, stabilitySummary)}
+                  {card.format(value)}
                 </p>
                 <span className="ds-kicker shrink-0 text-[0.58rem] text-[var(--foreground-faint)]">{card.foot}</span>
               </div>
