@@ -78,6 +78,7 @@ export interface TokenRankingRow {
   outputTokens: number;
   totalTokens: number;
   cacheTokens: number;
+  outputTokensPerSec: number | null;
   latestUsedAt: number;
   detail: TokenDetailData;
 }
@@ -92,6 +93,7 @@ export interface UserRankingRow {
   outputTokens: number;
   totalTokens: number;
   cacheTokens: number;
+  outputTokensPerSec: number | null;
   latestUsedAt: number;
 }
 
@@ -102,6 +104,7 @@ export interface ModelRankingRow {
   outputTokens: number;
   totalTokens: number;
   cacheTokens: number;
+  outputTokensPerSec: number | null;
   latestUsedAt: number;
 }
 
@@ -115,6 +118,7 @@ export interface ChannelRankingRow {
   outputTokens: number;
   totalTokens: number;
   cacheTokens: number;
+  outputTokensPerSec: number | null;
   latestUsedAt: number;
 }
 
@@ -693,6 +697,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       output_tokens: string | number;
       total_tokens: string | number;
       cache_tokens: string | number;
+      output_tokens_per_sec: string | number | null;
       latest_used_at: string | number;
     }>(
       `
@@ -703,6 +708,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(l.prompt_tokens + l.completion_tokens + ${cacheTokensSql}), 0) AS total_tokens,
           COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens,
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS output_tokens_per_sec,
           MAX(l.created_at) AS latest_used_at
         FROM logs l
         ${whereSql}
@@ -722,6 +728,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       output_tokens: string | number;
       total_tokens: string | number;
       cache_tokens: string | number;
+      output_tokens_per_sec: string | number | null;
       latest_used_at: string | number;
     }>(
       `
@@ -731,6 +738,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             l.channel_name,
             l.prompt_tokens,
             l.completion_tokens,
+            l.type,
+            l.use_time,
             l.created_at,
             ${cacheTokensSql} AS cache_tokens
           FROM logs l
@@ -745,6 +754,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(SUM(completion_tokens), 0) AS output_tokens,
             COALESCE(SUM(prompt_tokens + completion_tokens + cache_tokens), 0) AS total_tokens,
             COALESCE(SUM(cache_tokens), 0) AS cache_tokens,
+            AVG(CASE WHEN type = 2 AND use_time > 0 THEN completion_tokens::numeric / NULLIF(use_time, 0) END) AS output_tokens_per_sec,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
           GROUP BY COALESCE(channel_id, 0)
@@ -759,6 +769,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           aggregated.output_tokens,
           aggregated.total_tokens,
           aggregated.cache_tokens,
+          aggregated.output_tokens_per_sec,
           aggregated.latest_used_at
         FROM aggregated
         LEFT JOIN channels ON channels.id = aggregated.channel_id
@@ -918,6 +929,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     outputTokens: toNumber(row.output_tokens),
     totalTokens: toNumber(row.total_tokens),
     cacheTokens: toNumber(row.cache_tokens),
+    outputTokensPerSec: null,
     latestUsedAt: toNumber(row.latest_used_at),
   }));
 
@@ -1171,6 +1183,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
       cacheTokens: toNumber(row.cache_tokens),
+      outputTokensPerSec: null,
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     modelRankings: modelResult.rows.map((row) => ({
@@ -1180,6 +1193,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
       cacheTokens: toNumber(row.cache_tokens),
+      outputTokensPerSec: getNullableNumber(row.output_tokens_per_sec),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     channelRankings: channelResult.rows.map((row) => ({
@@ -1192,6 +1206,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       outputTokens: toNumber(row.output_tokens),
       totalTokens: toNumber(row.total_tokens),
       cacheTokens: toNumber(row.cache_tokens),
+      outputTokensPerSec: getNullableNumber(row.output_tokens_per_sec),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     modelStability: modelStabilityResult.rows.map((row) => ({

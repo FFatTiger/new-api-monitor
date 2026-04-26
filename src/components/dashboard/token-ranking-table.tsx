@@ -34,6 +34,7 @@ interface RankingViewRow {
   outputTokens: number;
   totalTokens: number;
   cacheTokens: number;
+  outputTokensPerSec: number | null;
   latestUsedAt: number;
   onSelect?: () => void;
 }
@@ -94,6 +95,14 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
   },
 };
 
+function formatOutputTokensPerSec(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return formatCompactNumber(value);
+}
+
 function sortRows(rows: RankingViewRow[], sortKey: SortKey, sortDirection: SortDirection) {
   return rows
     .map((row, index) => ({ row, index }))
@@ -149,6 +158,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         cacheTokens: row.cacheTokens,
+        outputTokensPerSec: row.outputTokensPerSec,
         latestUsedAt: row.latestUsedAt,
         onSelect: () => openRow(row),
       })),
@@ -166,6 +176,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         cacheTokens: row.cacheTokens,
+        outputTokensPerSec: row.outputTokensPerSec,
         latestUsedAt: row.latestUsedAt,
       })),
     [userRows],
@@ -182,6 +193,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         cacheTokens: row.cacheTokens,
+        outputTokensPerSec: row.outputTokensPerSec,
         latestUsedAt: row.latestUsedAt,
       })),
     [modelRows],
@@ -198,6 +210,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         outputTokens: row.outputTokens,
         totalTokens: row.totalTokens,
         cacheTokens: row.cacheTokens,
+        outputTokensPerSec: row.outputTokensPerSec,
         latestUsedAt: row.latestUsedAt,
       })),
     [channelRows],
@@ -371,6 +384,11 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                     请求 <span className="ml-1 ds-mono text-[var(--foreground)]">{row.requestCount.toLocaleString("zh-CN")}</span>
                   </span>
                   <span className="text-right">{formatDateTime(row.latestUsedAt)}</span>
+                  {(activeDimension === "model" || activeDimension === "channel") && row.outputTokensPerSec != null ? (
+                    <span>
+                      输出 tok/s <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.outputTokensPerSec)}</span>
+                    </span>
+                  ) : null}
                 </div>
               </>
             );
@@ -398,7 +416,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
 
         <div key={`desktop-${activeDimension}`} className="hidden md:block">
           <div className="ds-table-shell overflow-x-auto">
-            <table className="min-w-[1080px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
+            <table className="min-w-[1160px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
               <thead>
                 <tr className="text-[0.7rem] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                   <SortableHeader label="#" sortKey="rank" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
@@ -422,6 +440,9 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   <th className="px-4 py-3 text-right">输入</th>
                   <th className="px-4 py-3 text-right">输出</th>
                   <SortableHeader label="总令牌" sortKey="totalTokens" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
+                  {(activeDimension === "model" || activeDimension === "channel") ? (
+                    <th className="px-4 py-3 text-right">输出 tok/s</th>
+                  ) : null}
                   <SortableHeader
                     label="最近调用"
                     sortKey="latestUsedAt"
@@ -465,6 +486,11 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                     <td className="px-4 py-3 text-right ds-mono text-[0.94rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">
                       {formatCompactNumber(row.totalTokens)}
                     </td>
+                    {(activeDimension === "model" || activeDimension === "channel") ? (
+                      <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
+                        {formatOutputTokensPerSec(row.outputTokensPerSec)}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3 text-[0.79rem] text-[var(--foreground-soft)]">{formatDateTime(row.latestUsedAt)}</td>
                   </tr>
                 ))}
