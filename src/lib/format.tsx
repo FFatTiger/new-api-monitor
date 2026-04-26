@@ -45,18 +45,17 @@ export function formatCompactNumber(value: number) {
 }
 
 export function formatInputWithCache(inputTokens: number, cacheTokens: number): string | ReactElement {
-  const input = formatCompactNumber(inputTokens);
   if (cacheTokens > 0) {
     return (
-      <>
-        {input}{" "}
-        <span className="text-[0.72em] text-[var(--foreground-muted)]">
-          (Cache {formatCompactNumber(cacheTokens)})
+      <span>
+        {formatCompactNumber(inputTokens)}
+        <span className="block text-[0.62em] text-[var(--foreground-muted)]">
+          Cache {formatCompactNumber(cacheTokens)}
         </span>
-      </>
+      </span>
     );
   }
-  return input;
+  return formatCompactNumber(inputTokens);
 }
 
 export function formatPercent(value: number | null | undefined) {
