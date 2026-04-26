@@ -135,6 +135,7 @@ export interface ModelStabilityRow {
   errorRate: number;
   avgFirstTokenLatency: number | null;
   avgTotalResponseTime: number | null;
+  avgOutputTokensPerSec: number | null;
   latestUsedAt: number;
 }
 
@@ -149,6 +150,7 @@ export interface ChannelStabilityRow {
   errorRate: number;
   avgFirstTokenLatency: number | null;
   avgTotalResponseTime: number | null;
+  avgOutputTokensPerSec: number | null;
   latestUsedAt: number;
 }
 
@@ -773,6 +775,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       error_rate: string | number;
       avg_first_token_latency: string | number | null;
       avg_total_response_time: string | number | null;
+      avg_output_tokens_per_sec: string | number | null;
       latest_used_at: string | number;
     }>(
       `
@@ -784,6 +787,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
           AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
           AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec,
           MAX(l.created_at) AS latest_used_at
         FROM logs l
         ${whereSql}
@@ -805,6 +809,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       error_rate: string | number;
       avg_first_token_latency: string | number | null;
       avg_total_response_time: string | number | null;
+      avg_output_tokens_per_sec: string | number | null;
       latest_used_at: string | number;
     }>(
       `
@@ -818,6 +823,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
             AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
             AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
+            AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec,
             MAX(l.created_at) AS latest_used_at
           FROM logs l
           ${whereSql}
@@ -834,6 +840,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           aggregated.error_rate,
           aggregated.avg_first_token_latency,
           aggregated.avg_total_response_time,
+          aggregated.avg_output_tokens_per_sec,
           aggregated.latest_used_at
         FROM aggregated
         LEFT JOIN channels ON channels.id = aggregated.channel_id
@@ -1195,6 +1202,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       errorRate: toNumber(row.error_rate),
       avgFirstTokenLatency: getNullableNumber(row.avg_first_token_latency),
       avgTotalResponseTime: getNullableNumber(row.avg_total_response_time),
+      avgOutputTokensPerSec: getNullableNumber(row.avg_output_tokens_per_sec),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     channelStability: channelStabilityResult.rows.map((row) => ({
@@ -1208,6 +1216,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       errorRate: toNumber(row.error_rate),
       avgFirstTokenLatency: getNullableNumber(row.avg_first_token_latency),
       avgTotalResponseTime: getNullableNumber(row.avg_total_response_time),
+      avgOutputTokensPerSec: getNullableNumber(row.avg_output_tokens_per_sec),
       latestUsedAt: toNumber(row.latest_used_at),
     })),
     trend: trendResult.rows.map((row) => ({

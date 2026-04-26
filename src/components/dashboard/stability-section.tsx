@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 
 import {
+  formatCompactNumber,
   formatDateTime,
   formatDurationMsAsSeconds,
   formatDurationSeconds,
@@ -30,6 +31,7 @@ type SortKey =
   | "availabilityRate"
   | "avgFirstTokenLatency"
   | "avgTotalResponseTime"
+  | "avgOutputTokensPerSec"
   | "latestUsedAt";
 type SortDirection = "asc" | "desc";
 
@@ -42,6 +44,7 @@ interface StabilityViewRow {
   availabilityRate: number;
   avgFirstTokenLatency: number | null;
   avgTotalResponseTime: number | null;
+  avgOutputTokensPerSec: number | null;
   latestUsedAt: number;
 }
 
@@ -71,6 +74,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     availabilityRate: "可用率",
     avgFirstTokenLatency: "首 Token",
     avgTotalResponseTime: "总耗时",
+    avgOutputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
   channel: {
@@ -82,6 +86,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     availabilityRate: "可用率",
     avgFirstTokenLatency: "首 Token",
     avgTotalResponseTime: "总耗时",
+    avgOutputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
 };
@@ -100,6 +105,14 @@ function formatAvailabilityRate(value: number | null | undefined) {
   }
 
   return formatPercent(value);
+}
+
+function formatOutputTokensPerSec(value: number | null | undefined) {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+
+  return formatCompactNumber(value);
 }
 
 function sortRows(rows: StabilityViewRow[], sortKey: SortKey, sortDirection: SortDirection) {
@@ -132,6 +145,9 @@ function sortRows(rows: StabilityViewRow[], sortKey: SortKey, sortDirection: Sor
           break;
         case "avgTotalResponseTime":
           result = (left.row.avgTotalResponseTime ?? -1) - (right.row.avgTotalResponseTime ?? -1);
+          break;
+        case "avgOutputTokensPerSec":
+          result = (left.row.avgOutputTokensPerSec ?? -1) - (right.row.avgOutputTokensPerSec ?? -1);
           break;
         case "latestUsedAt":
           result = left.row.latestUsedAt - right.row.latestUsedAt;
@@ -168,6 +184,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
           availabilityRate: getAvailabilityRate(row.errorRate),
           avgFirstTokenLatency: row.avgFirstTokenLatency,
           avgTotalResponseTime: row.avgTotalResponseTime,
+          avgOutputTokensPerSec: row.avgOutputTokensPerSec,
           latestUsedAt: row.latestUsedAt,
         })),
       },
@@ -183,6 +200,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
           availabilityRate: getAvailabilityRate(row.errorRate),
           avgFirstTokenLatency: row.avgFirstTokenLatency,
           avgTotalResponseTime: row.avgTotalResponseTime,
+          avgOutputTokensPerSec: row.avgOutputTokensPerSec,
           latestUsedAt: row.latestUsedAt,
         })),
       },
@@ -323,6 +341,9 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
               <span className="text-right">
                 总耗时 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatDurationSeconds(row.avgTotalResponseTime)}</span>
               </span>
+              <span>
+                输出 tok/s <span className="ml-1 ds-mono text-[var(--foreground)]">{formatOutputTokensPerSec(row.avgOutputTokensPerSec)}</span>
+              </span>
               <span className="col-span-2 text-right">{formatDateTime(row.latestUsedAt)}</span>
             </div>
           </article>
@@ -331,7 +352,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
 
       <div key={`desktop-${activeDimension}`} className="hidden md:block">
         <div className="ds-table-shell overflow-x-auto">
-          <table className="min-w-[980px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
+          <table className="min-w-[1060px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
             <thead>
               <tr className="text-[0.64rem] uppercase tracking-[0.16em] text-[var(--foreground-faint)]">
                 <SortableHeader label="#" sortKey="rank" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
@@ -342,6 +363,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
                 <SortableHeader label="可用率" sortKey="availabilityRate" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="首 Token" sortKey="avgFirstTokenLatency" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="总耗时" sortKey="avgTotalResponseTime" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
+                <SortableHeader label="输出 tok/s" sortKey="avgOutputTokensPerSec" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="最近调用" sortKey="latestUsedAt" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
               </tr>
             </thead>
@@ -360,6 +382,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
                   <td className="px-4 py-3 text-right ds-mono text-[0.94rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">{formatAvailabilityRate(row.availabilityRate)}</td>
                   <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatDurationMsAsSeconds(row.avgFirstTokenLatency)}</td>
                   <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatDurationSeconds(row.avgTotalResponseTime)}</td>
+                  <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatOutputTokensPerSec(row.avgOutputTokensPerSec)}</td>
                   <td className="px-4 py-3 text-[0.74rem] text-[var(--foreground-soft)]">{formatDateTime(row.latestUsedAt)}</td>
                 </tr>
               ))}
