@@ -407,6 +407,21 @@ function buildLogsWhere(filters: DashboardFilters, alias = "l") {
   };
 }
 
+function getCacheTokensSql(alias = "l") {
+  return `CASE
+    WHEN ${alias}.other IS NOT NULL AND ${alias}.other LIKE '{%'
+    THEN COALESCE((${alias}.other::jsonb->>'cache_tokens')::bigint, 0)
+       + CASE
+           WHEN COALESCE((${alias}.other::jsonb->>'cache_creation_tokens_5m')::bigint, 0) > 0
+             OR COALESCE((${alias}.other::jsonb->>'cache_creation_tokens_1h')::bigint, 0) > 0
+           THEN COALESCE((${alias}.other::jsonb->>'cache_creation_tokens_5m')::bigint, 0)
+              + COALESCE((${alias}.other::jsonb->>'cache_creation_tokens_1h')::bigint, 0)
+           ELSE COALESCE((${alias}.other::jsonb->>'cache_creation_tokens')::bigint, 0)
+         END
+    ELSE 0
+  END`;
+}
+
 function getValidFirstTokenLatencySql(expression: string) {
   return `CASE
     WHEN COALESCE(${expression}, '') LIKE '{%'
@@ -486,6 +501,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
   const trendBucket = filters.granularity;
   const normalizedModelSql = getNormalizedModelSql("l.model_name");
   const validFirstTokenLatencySql = getValidFirstTokenLatencySql("l.other");
+  const cacheTokensSql = getCacheTokensSql("l");
 
   const [
     summaryResult,
@@ -513,9 +529,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       `
         SELECT
           COUNT(*) AS request_count,
-          COALESCE(SUM(l.prompt_tokens), 0) AS input_tokens,
+          COALESCE(SUM(l.prompt_tokens + ${cacheTokensSql}), 0) AS input_tokens,
           COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
-          COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
+          COALESCE(SUM(l.prompt_tokens + l.completion_tokens + ${cacheTokensSql}), 0) AS total_tokens,
           COUNT(DISTINCT NULLIF(l.token_id, 0)) AS active_token_count,
           COUNT(DISTINCT l.user_id) AS active_user_count,
           COUNT(DISTINCT l.channel_id) AS active_channel_count
@@ -567,7 +583,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             l.username,
             l.prompt_tokens,
             l.completion_tokens,
-            l.created_at
+            l.created_at,
+            ${cacheTokensSql} AS cache_tokens
           FROM logs l
           ${whereSql}
         ),
@@ -578,9 +595,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             MAX(user_id) AS user_id,
             MAX(NULLIF(username, '')) AS log_username,
             COUNT(*) AS request_count,
-            COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+            COALESCE(SUM(prompt_tokens + cache_tokens), 0) AS input_tokens,
             COALESCE(SUM(completion_tokens), 0) AS output_tokens,
-            COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+            COALESCE(SUM(prompt_tokens + completion_tokens + cache_tokens), 0) AS total_tokens,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
           GROUP BY COALESCE(token_id, 0), COALESCE(NULLIF(token_name, ''), 'Unknown')
@@ -618,7 +635,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     }>(
       `
         WITH filtered_logs AS (
-          SELECT l.user_id, l.username, l.prompt_tokens, l.completion_tokens, l.created_at
+          SELECT l.user_id, l.username, l.prompt_tokens, l.completion_tokens, l.created_at, ${cacheTokensSql} AS cache_tokens
           FROM logs l
           ${whereSql}
         ),
@@ -627,9 +644,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(user_id, 0) AS user_id,
             COALESCE(NULLIF(username, ''), 'Unknown') AS log_username,
             COUNT(*) AS request_count,
-            COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+            COALESCE(SUM(prompt_tokens + cache_tokens), 0) AS input_tokens,
             COALESCE(SUM(completion_tokens), 0) AS output_tokens,
-            COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+            COALESCE(SUM(prompt_tokens + completion_tokens + cache_tokens), 0) AS total_tokens,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
           GROUP BY COALESCE(user_id, 0), COALESCE(NULLIF(username, ''), 'Unknown')
@@ -663,9 +680,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         SELECT
           ${normalizedModelSql} AS model_name,
           COUNT(*) AS request_count,
-          COALESCE(SUM(l.prompt_tokens), 0) AS input_tokens,
+          COALESCE(SUM(l.prompt_tokens + ${cacheTokensSql}), 0) AS input_tokens,
           COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
-          COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens,
+          COALESCE(SUM(l.prompt_tokens + l.completion_tokens + ${cacheTokensSql}), 0) AS total_tokens,
           MAX(l.created_at) AS latest_used_at
         FROM logs l
         ${whereSql}
@@ -693,7 +710,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             l.channel_name,
             l.prompt_tokens,
             l.completion_tokens,
-            l.created_at
+            l.created_at,
+            ${cacheTokensSql} AS cache_tokens
           FROM logs l
           ${whereSql}
         ),
@@ -702,9 +720,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(channel_id, 0) AS channel_id,
             MAX(NULLIF(channel_name, '')) AS log_channel_name,
             COUNT(*) AS request_count,
-            COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+            COALESCE(SUM(prompt_tokens + cache_tokens), 0) AS input_tokens,
             COALESCE(SUM(completion_tokens), 0) AS output_tokens,
-            COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+            COALESCE(SUM(prompt_tokens + completion_tokens + cache_tokens), 0) AS total_tokens,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
           GROUP BY COALESCE(channel_id, 0)
@@ -815,9 +833,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
         SELECT
           EXTRACT(EPOCH FROM date_trunc('${trendBucket}', to_timestamp(l.created_at))) AS bucket_ts,
           COUNT(*) AS request_count,
-          COALESCE(SUM(l.prompt_tokens), 0) AS input_tokens,
+          COALESCE(SUM(l.prompt_tokens + ${cacheTokensSql}), 0) AS input_tokens,
           COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
-          COALESCE(SUM(l.prompt_tokens + l.completion_tokens), 0) AS total_tokens
+          COALESCE(SUM(l.prompt_tokens + l.completion_tokens + ${cacheTokensSql}), 0) AS total_tokens
         FROM logs l
         ${whereSql}
         GROUP BY 1
@@ -891,7 +909,8 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           l.channel_name,
           l.prompt_tokens,
           l.completion_tokens,
-          l.created_at
+          l.created_at,
+          ${cacheTokensSql} AS cache_tokens
         FROM logs l
         ${whereSql}
       ),
@@ -941,9 +960,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
               token_name,
               normalized_model AS model_name,
               COUNT(*) AS request_count,
-              COALESCE(SUM(prompt_tokens), 0) AS input_tokens,
+              COALESCE(SUM(prompt_tokens + cache_tokens), 0) AS input_tokens,
               COALESCE(SUM(completion_tokens), 0) AS output_tokens,
-              COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total_tokens,
+              COALESCE(SUM(prompt_tokens + completion_tokens + cache_tokens), 0) AS total_tokens,
               MAX(created_at) AS latest_used_at
             FROM matched_logs
             WHERE normalized_model <> 'Unknown'
@@ -996,9 +1015,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
                 CONCAT('渠道 ', matched_logs.channel_id::text)
               ) AS channel_name,
               COUNT(*) AS request_count,
-              COALESCE(SUM(matched_logs.prompt_tokens), 0) AS input_tokens,
+              COALESCE(SUM(matched_logs.prompt_tokens + matched_logs.cache_tokens), 0) AS input_tokens,
               COALESCE(SUM(matched_logs.completion_tokens), 0) AS output_tokens,
-              COALESCE(SUM(matched_logs.prompt_tokens + matched_logs.completion_tokens), 0) AS total_tokens,
+              COALESCE(SUM(matched_logs.prompt_tokens + matched_logs.completion_tokens + matched_logs.cache_tokens), 0) AS total_tokens,
               MAX(matched_logs.created_at) AS latest_used_at
             FROM matched_logs
             LEFT JOIN channels ON channels.id = matched_logs.channel_id
