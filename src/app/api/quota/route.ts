@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const API_BASE_URL = process.env.API_BASE_URL || "";
+const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
 const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
 
 export async function POST(request: NextRequest) {
