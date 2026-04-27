@@ -118,7 +118,7 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
                     return `时间 ${label}`;
                   }
 
-                  return `时间 ${label} · 请求 ${formatInteger(point.requestCount)}`;
+                  return `时间 ${label} · 请求 ${point.requestCount.toLocaleString("zh-CN")}`;
                 }}
               />
               <Line

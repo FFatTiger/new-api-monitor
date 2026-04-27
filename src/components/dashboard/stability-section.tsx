@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import {
   formatCompactNumber,
@@ -38,7 +38,7 @@ type SortDirection = "asc" | "desc";
 interface StabilityViewRow {
   key: string;
   name: string;
-  info: string;
+  info: ReactNode;
   totalAttempts: number;
   errorCount: number;
   availabilityRate: number;
@@ -129,7 +129,7 @@ function sortRows(rows: StabilityViewRow[], sortKey: SortKey, sortDirection: Sor
           result = left.row.name.localeCompare(right.row.name, "zh-CN");
           break;
         case "info":
-          result = left.row.info.localeCompare(right.row.info, "zh-CN");
+          result = 0;
           break;
         case "totalAttempts":
           result = left.row.totalAttempts - right.row.totalAttempts;
@@ -178,7 +178,7 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
         rows: modelRows.map((row) => ({
           key: row.modelName,
           name: row.modelName,
-          info: `${formatInteger(row.successCount)} 成功`,
+          info: <>{formatInteger(row.successCount)} 成功</>,
           totalAttempts: row.totalAttempts,
           errorCount: row.errorCount,
           availabilityRate: getAvailabilityRate(row.errorRate),

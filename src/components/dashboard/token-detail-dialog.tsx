@@ -85,7 +85,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
             rows={row.detail.models.map((model) => ({
               key: model.modelName,
               title: model.modelName,
-              metric: `总 ${formatCompactNumber(model.totalTokens)}`,
+              metric: <>总 {formatCompactNumber(model.totalTokens)}</>,
               subMetric: (
                 <>
                   输入 {formatInputWithCache(model.inputTokens, model.cacheTokens)} · 输出 {formatCompactNumber(model.outputTokens)}
@@ -101,7 +101,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
             rows={row.detail.channels.map((channel) => ({
               key: `${channel.channelId}-${channel.channelName}`,
               title: channel.channelName,
-              metric: `总 ${formatCompactNumber(channel.totalTokens)}`,
+              metric: <>总 {formatCompactNumber(channel.totalTokens)}</>,
               subMetric: (
                 <>
                   输入 {formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 {formatCompactNumber(channel.outputTokens)}
@@ -145,7 +145,7 @@ interface BreakdownPanelProps {
   rows: Array<{
     key: string;
     title: string;
-    metric: string;
+    metric: ReactNode;
     subMetric: ReactNode;
     meta: string;
   }>;
