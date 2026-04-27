@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCompactNumber, formatInputWithCache, formatInteger, formatTrendLabel } from "@/lib/format";
+import { formatCompactNumber, formatCompactNumberStr, formatInputWithCache, formatInteger, formatTrendLabel } from "@/lib/format";
 import type { TrendGranularity, TrendPoint } from "@/lib/queries/dashboard";
 
 interface UsageTrendChartProps {
@@ -74,7 +74,7 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
               />
               <YAxis
                 tick={{ fill: "var(--foreground-faint)", fontSize: 11 }}
-                tickFormatter={formatCompactNumber}
+                tickFormatter={formatCompactNumberStr}
                 tickLine={false}
                 axisLine={false}
                 width={56}

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { formatCompactNumber, formatDateTime, formatStatus } from "@/lib/format";
 import type {
   ChannelRankingRow,
@@ -55,7 +57,7 @@ interface DimensionCardRow {
   key: string;
   primary: string;
   secondary: string;
-  metric: string;
+  metric: ReactNode;
   meta: string;
 }
 

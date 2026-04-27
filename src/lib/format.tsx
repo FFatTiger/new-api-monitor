@@ -36,18 +36,24 @@ const shortDateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
 });
 
+const fullFormatter = new Intl.NumberFormat("zh-CN");
+
 export function formatInteger(value: number) {
-  return integerFormatter.format(value);
+  return <span title={fullFormatter.format(value)}>{integerFormatter.format(value)}</span>;
 }
 
 export function formatCompactNumber(value: number) {
+  return <span title={fullFormatter.format(value)}>{compactFormatter.format(value)}</span>;
+}
+
+export function formatCompactNumberStr(value: number) {
   return compactFormatter.format(value);
 }
 
 export function formatInputWithCache(inputTokens: number, cacheTokens: number): string | ReactElement {
   if (cacheTokens > 0) {
     return (
-      <span>
+      <span title={`${fullFormatter.format(inputTokens)} (Cache ${fullFormatter.format(cacheTokens)})`}>
         {formatCompactNumber(inputTokens)}
         <span className="block text-[0.62em] text-[var(--foreground-muted)]">
           Cache {formatCompactNumber(cacheTokens)}

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import {
   formatCompactNumber,
   formatDurationMsAsSeconds,
@@ -17,7 +19,7 @@ const cards: Array<{
   label: string;
   foot: string;
   getValue: (summary: SummaryMetrics, stabilitySummary: StabilitySummary) => number | null;
-  format: (value: number | null) => string;
+  format: (value: number | null) => ReactNode;
   valueClassName: string;
 }> = [
   {
