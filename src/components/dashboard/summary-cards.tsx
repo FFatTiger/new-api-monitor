@@ -55,12 +55,12 @@ const cards: Array<{
     valueClassName: "text-[var(--foreground)]",
   },
   {
-    key: "activeTokenCount",
-    label: "活跃密钥",
-    foot: "密钥",
-    getValue: (summary) => summary.activeTokenCount,
-    format: (value) => formatInteger(value ?? 0),
-    valueClassName: "text-[var(--foreground-muted)]",
+    key: "avgOutputTokensPerSec",
+    label: "输出 tok/s",
+    foot: "tok/s",
+    getValue: (summary) => summary.avgOutputTokensPerSec,
+    format: (value) => formatCompactNumber(value ?? 0),
+    valueClassName: "text-[var(--foreground)]",
   },
   {
     key: "activeUserCount",

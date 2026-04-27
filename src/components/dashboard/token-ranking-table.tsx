@@ -22,7 +22,7 @@ interface TokenRankingTableProps {
 }
 
 type DimensionKey = "token" | "user" | "model" | "channel";
-type SortKey = "rank" | "name" | "info" | "requestCount" | "totalTokens" | "latestUsedAt";
+type SortKey = "rank" | "name" | "info" | "requestCount" | "totalTokens" | "outputTokensPerSec" | "latestUsedAt";
 type SortDirection = "asc" | "desc";
 
 interface RankingViewRow {
@@ -67,6 +67,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     info: "用户",
     requestCount: "请求",
     totalTokens: "总令牌",
+    outputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
   user: {
@@ -75,6 +76,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     info: "显示名",
     requestCount: "请求",
     totalTokens: "总令牌",
+    outputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
   model: {
@@ -83,6 +85,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     info: "说明",
     requestCount: "请求",
     totalTokens: "总令牌",
+    outputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
   channel: {
@@ -91,6 +94,7 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     info: "状态",
     requestCount: "请求",
     totalTokens: "总令牌",
+    outputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
 };
@@ -124,6 +128,9 @@ function sortRows(rows: RankingViewRow[], sortKey: SortKey, sortDirection: SortD
           break;
         case "totalTokens":
           result = left.row.totalTokens - right.row.totalTokens;
+          break;
+        case "outputTokensPerSec":
+          result = (left.row.outputTokensPerSec ?? -1) - (right.row.outputTokensPerSec ?? -1);
           break;
         case "latestUsedAt":
           result = left.row.latestUsedAt - right.row.latestUsedAt;
@@ -234,13 +241,13 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         nameLabel: "模型",
         infoLabel: null,
         rows: modelViewRows,
-        sortKeys: ["rank", "name", "requestCount", "totalTokens", "latestUsedAt"],
+        sortKeys: ["rank", "name", "requestCount", "totalTokens", "outputTokensPerSec", "latestUsedAt"],
       },
       channel: {
         nameLabel: "渠道",
         infoLabel: "状态",
         rows: channelViewRows,
-        sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "latestUsedAt"],
+        sortKeys: ["rank", "name", "info", "requestCount", "totalTokens", "outputTokensPerSec", "latestUsedAt"],
       },
     }),
     [channelViewRows, modelViewRows, tokenViewRows, userViewRows],
@@ -441,7 +448,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   <th className="px-4 py-3 text-right">输出</th>
                   <SortableHeader label="总令牌" sortKey="totalTokens" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                   {(activeDimension === "model" || activeDimension === "channel") ? (
-                    <th className="px-4 py-3 text-right">输出 tok/s</th>
+                    <SortableHeader label="输出 tok/s" sortKey="outputTokensPerSec" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                   ) : null}
                   <SortableHeader
                     label="最近调用"

@@ -32,7 +32,7 @@ export interface SummaryMetrics {
   outputTokens: number;
   totalTokens: number;
   cacheTokens: number;
-  activeTokenCount: number;
+  avgOutputTokensPerSec: number | null;
   activeUserCount: number;
   activeChannelCount: number;
 }
@@ -537,9 +537,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       output_tokens: string | number;
       total_tokens: string | number;
       cache_tokens: string | number;
-      active_token_count: string | number;
       active_user_count: string | number;
       active_channel_count: string | number;
+      avg_output_tokens_per_sec: string | number | null;
     }>(
       `
         SELECT
@@ -548,9 +548,9 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(l.prompt_tokens + l.completion_tokens + ${cacheTokensSql}), 0) AS total_tokens,
           COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens,
-          COUNT(DISTINCT NULLIF(l.token_id, 0)) AS active_token_count,
           COUNT(DISTINCT l.user_id) AS active_user_count,
-          COUNT(DISTINCT l.channel_id) AS active_channel_count
+          COUNT(DISTINCT l.channel_id) AS active_channel_count,
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec
         FROM logs l
         ${whereSql}
       `,
@@ -1157,7 +1157,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
       outputTokens: toNumber(summaryRow?.output_tokens),
       totalTokens: toNumber(summaryRow?.total_tokens),
       cacheTokens: toNumber(summaryRow?.cache_tokens),
-      activeTokenCount: toNumber(summaryRow?.active_token_count),
+      avgOutputTokensPerSec: getNullableNumber(summaryRow?.avg_output_tokens_per_sec),
       activeUserCount: toNumber(summaryRow?.active_user_count),
       activeChannelCount: toNumber(summaryRow?.active_channel_count),
     },
