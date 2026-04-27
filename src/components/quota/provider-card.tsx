@@ -53,7 +53,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
   return (
     <article className="ds-card-muted ds-card-interactive flex h-full flex-col p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="min-w-0 flex-1 flex items-center gap-3">
           <div className="rounded-[12px] bg-[var(--background-elevated)] p-2 shadow-[0_0_0_1px_var(--surface-ring-soft)]">
             <ProviderIcon type={provider} />
           </div>
