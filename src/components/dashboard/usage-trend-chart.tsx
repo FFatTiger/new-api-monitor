@@ -16,9 +16,7 @@ import {
   formatCompactNumberStr,
   formatInputWithCache,
   formatInteger,
-  formatPercent,
   formatTrendLabel,
-  getCacheRatio,
 } from "@/lib/format";
 import type { TrendGranularity, TrendPoint } from "@/lib/queries/dashboard";
 
@@ -106,7 +104,7 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
 
                   if (seriesName === "inputTokens") {
                     const cacheTokens = (props.payload as TrendPoint)?.cacheTokens ?? 0;
-                    return [formatInputWithCache(numericValue, cacheTokens), `输入令牌 · Cache ${formatPercent(getCacheRatio(numericValue, cacheTokens))}`];
+                    return [formatInputWithCache(numericValue, cacheTokens), "输入令牌"];
                   }
 
                   if (seriesName === "outputTokens") {

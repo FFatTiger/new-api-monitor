@@ -316,9 +316,6 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                 榜首 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{leader.name}</span>
               </span>
               <span>
-                Cache <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatPercent(getCacheRatio(leader.inputTokens, leader.cacheTokens))}</span>
-              </span>
-              <span>
                 输入 <span className="ml-1 ds-mono font-semibold text-[var(--foreground)]">{formatCompactNumber(leader.inputTokens)}</span>
               </span>
               <span>

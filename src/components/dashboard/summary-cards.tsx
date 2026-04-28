@@ -7,7 +7,6 @@ import {
   formatInputWithCache,
   formatInteger,
   formatPercent,
-  getCacheRatio,
 } from "@/lib/format";
 import type { StabilitySummary, SummaryMetrics } from "@/lib/queries/dashboard";
 
@@ -38,14 +37,6 @@ const cards: Array<{
     foot: "输入",
     getValue: (summary) => summary.inputTokens,
     format: (value, summary) => formatInputWithCache(value ?? 0, summary.cacheTokens),
-    valueClassName: "text-[var(--foreground)]",
-  },
-  {
-    key: "cacheRatio",
-    label: "Cache 占比",
-    foot: "Cache / 输入",
-    getValue: (summary) => getCacheRatio(summary.inputTokens, summary.cacheTokens),
-    format: formatPercent,
     valueClassName: "text-[var(--foreground)]",
   },
   {
