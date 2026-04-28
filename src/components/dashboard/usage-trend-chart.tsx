@@ -11,7 +11,15 @@ import {
   YAxis,
 } from "recharts";
 
-import { formatCompactNumber, formatCompactNumberStr, formatInputWithCache, formatInteger, formatTrendLabel } from "@/lib/format";
+import {
+  formatCompactNumber,
+  formatCompactNumberStr,
+  formatInputWithCache,
+  formatInteger,
+  formatPercent,
+  formatTrendLabel,
+  getCacheRatio,
+} from "@/lib/format";
 import type { TrendGranularity, TrendPoint } from "@/lib/queries/dashboard";
 
 interface UsageTrendChartProps {
@@ -98,7 +106,7 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
 
                   if (seriesName === "inputTokens") {
                     const cacheTokens = (props.payload as TrendPoint)?.cacheTokens ?? 0;
-                    return [formatInputWithCache(numericValue, cacheTokens), "输入令牌"];
+                    return [formatInputWithCache(numericValue, cacheTokens), `输入令牌 · Cache ${formatPercent(getCacheRatio(numericValue, cacheTokens))}`];
                   }
 
                   if (seriesName === "outputTokens") {

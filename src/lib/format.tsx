@@ -50,13 +50,23 @@ export function formatCompactNumberStr(value: number) {
   return compactFormatter.format(value);
 }
 
+export function getCacheRatio(inputTokens: number, cacheTokens: number) {
+  if (inputTokens <= 0 || !Number.isFinite(inputTokens) || !Number.isFinite(cacheTokens)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(1, cacheTokens / inputTokens));
+}
+
 export function formatInputWithCache(inputTokens: number, cacheTokens: number): string | ReactElement {
   if (cacheTokens > 0) {
+    const cacheRatio = getCacheRatio(inputTokens, cacheTokens);
+
     return (
-      <span title={`${fullFormatter.format(inputTokens)} (Cache ${fullFormatter.format(cacheTokens)})`}>
+      <span title={`${fullFormatter.format(inputTokens)} (Cache ${fullFormatter.format(cacheTokens)}, ${percentFormatter.format(cacheRatio)})`}>
         {formatCompactNumber(inputTokens)}
         <span className="block text-[0.62em] text-[var(--foreground-muted)]">
-          Cache {formatCompactNumber(cacheTokens)}
+          Cache {percentFormatter.format(cacheRatio)}
         </span>
       </span>
     );

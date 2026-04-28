@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-import { formatCompactNumber, formatDateTime, formatInputWithCache, formatStatus } from "@/lib/format";
+import { formatCompactNumber, formatDateTime, formatInputWithCache, formatPercent, formatStatus, getCacheRatio } from "@/lib/format";
 import type { TokenRankingRow } from "@/lib/queries/dashboard";
 
 interface TokenDetailDialogProps {
@@ -34,6 +34,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
   const averageInputTokens = row.requestCount > 0 ? row.inputTokens / row.requestCount : 0;
   const averageOutputTokens = row.requestCount > 0 ? row.outputTokens / row.requestCount : 0;
   const averageTotalTokens = row.requestCount > 0 ? row.totalTokens / row.requestCount : 0;
+  const cacheRatio = getCacheRatio(row.inputTokens, row.cacheTokens);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-5">
@@ -65,6 +66,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
           <DataCard label="用户名" value={row.username} subValue={row.displayName || "-"} />
           <DataCard label="状态" value={formatStatus(row.status)} subValue={`最近调用 ${formatDateTime(row.latestUsedAt)}`} />
           <DataCard label="请求数" value={row.requestCount.toLocaleString("zh-CN")} subValue="当前筛选窗口内" />
+          <DataCard label="Cache 占比" value={formatPercent(cacheRatio)} subValue={`Cache ${row.cacheTokens.toLocaleString("zh-CN")} / 输入`} />
           <DataCard label="输入令牌" value={formatInputWithCache(row.inputTokens, row.cacheTokens)} subValue="当前筛选窗口内累计" />
           <DataCard label="输出令牌" value={formatCompactNumber(row.outputTokens)} subValue="当前筛选窗口内累计" />
           <DataCard label="总令牌" value={formatCompactNumber(row.totalTokens)} subValue="当前筛选窗口内累计" />
@@ -88,7 +90,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
               metric: <>总 {formatCompactNumber(model.totalTokens)}</>,
               subMetric: (
                 <>
-                  输入 {formatInputWithCache(model.inputTokens, model.cacheTokens)} · 输出 {formatCompactNumber(model.outputTokens)}
+                  Cache {formatPercent(getCacheRatio(model.inputTokens, model.cacheTokens))} · 输入 {formatInputWithCache(model.inputTokens, model.cacheTokens)} · 输出 {formatCompactNumber(model.outputTokens)}
                 </>
               ),
               meta: `请求 ${model.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(model.latestUsedAt)}`,
@@ -104,7 +106,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
               metric: <>总 {formatCompactNumber(channel.totalTokens)}</>,
               subMetric: (
                 <>
-                  输入 {formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 {formatCompactNumber(channel.outputTokens)}
+                  Cache {formatPercent(getCacheRatio(channel.inputTokens, channel.cacheTokens))} · 输入 {formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 {formatCompactNumber(channel.outputTokens)}
                 </>
               ),
               meta: `请求 ${channel.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(channel.latestUsedAt)}`,
