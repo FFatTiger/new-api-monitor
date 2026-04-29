@@ -379,10 +379,10 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
 
                 <div className="mt-3 grid grid-cols-3 gap-2 text-[0.77rem] text-[var(--foreground-soft)]">
                   <span>
-                    Cache <span className="ml-1 ds-mono text-[var(--foreground)]">{formatPercent(getCacheRatio(row.inputTokens, row.cacheTokens))}</span>
+                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.inputTokens)}</span>
                   </span>
                   <span className="text-center">
-                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.inputTokens)}</span>
+                    Cache <span className="ml-1 ds-mono text-[var(--foreground)]">{formatPercent(getCacheRatio(row.inputTokens, row.cacheTokens))}</span>
                   </span>
                   <span className="text-right">
                     输出 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.outputTokens)}</span>
@@ -447,8 +447,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                     />
                   ) : null}
                   <SortableHeader label="请求" sortKey="requestCount" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
-                  <th className="px-4 py-3 text-right">Cache</th>
                   <th className="px-4 py-3 text-right">输入</th>
+                  <th className="px-4 py-3 text-right">Cache</th>
                   <th className="px-4 py-3 text-right">输出</th>
                   <SortableHeader label="总令牌" sortKey="totalTokens" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                   {(activeDimension === "model" || activeDimension === "channel") ? (
@@ -489,10 +489,10 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                       {row.requestCount.toLocaleString("zh-CN")}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
-                      {formatPercent(getCacheRatio(row.inputTokens, row.cacheTokens))}
+                      {formatCompactNumber(row.inputTokens)}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
-                      {formatCompactNumber(row.inputTokens)}
+                      {formatPercent(getCacheRatio(row.inputTokens, row.cacheTokens))}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
                       {formatCompactNumber(row.outputTokens)}
