@@ -6,7 +6,7 @@ import {
   TokenDetailDialog,
   useTokenDetailDialog,
 } from "@/components/dashboard/token-detail-dialog";
-import { formatCompactNumber, formatDateTime, formatInputWithCache, formatPercent, formatStatus, getCacheRatio } from "@/lib/format";
+import { formatCompactNumber, formatDateTime, formatPercent, formatStatus, getCacheRatio } from "@/lib/format";
 import type {
   ChannelRankingRow,
   ModelRankingRow,
@@ -382,7 +382,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                     Cache <span className="ml-1 ds-mono text-[var(--foreground)]">{formatPercent(getCacheRatio(row.inputTokens, row.cacheTokens))}</span>
                   </span>
                   <span className="text-center">
-                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatInputWithCache(row.inputTokens, row.cacheTokens)}</span>
+                    输入 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.inputTokens)}</span>
                   </span>
                   <span className="text-right">
                     输出 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.outputTokens)}</span>
@@ -492,7 +492,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                       {formatPercent(getCacheRatio(row.inputTokens, row.cacheTokens))}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
-                      {formatInputWithCache(row.inputTokens, row.cacheTokens)}
+                      {formatCompactNumber(row.inputTokens)}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono text-[0.82rem] text-[var(--foreground-muted)]">
                       {formatCompactNumber(row.outputTokens)}

@@ -14,7 +14,6 @@ import {
 import {
   formatCompactNumber,
   formatCompactNumberStr,
-  formatInputWithCache,
   formatInteger,
   formatTrendLabel,
 } from "@/lib/format";
@@ -94,7 +93,7 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
                   boxShadow:
                     "0px 0px 0px 1px rgba(0, 0, 0, 0.08), 0px 12px 40px -16px rgba(0, 0, 0, 0.18)",
                 }}
-                formatter={(value, name, props) => {
+                formatter={(value, name) => {
                   const numericValue = typeof value === "number" ? value : Number(value ?? 0);
                   const seriesName = String(name ?? "");
 
@@ -103,8 +102,7 @@ export function UsageTrendChart({ data, granularity }: UsageTrendChartProps) {
                   }
 
                   if (seriesName === "inputTokens") {
-                    const cacheTokens = (props.payload as TrendPoint)?.cacheTokens ?? 0;
-                    return [formatInputWithCache(numericValue, cacheTokens), "输入令牌"];
+                    return [formatCompactNumber(numericValue), "输入令牌"];
                   }
 
                   if (seriesName === "outputTokens") {
