@@ -13,6 +13,8 @@ export function ProviderIcon({ type }: { type: ProviderType }) {
   switch (type) {
     case "antigravity":
       return <QuotaIcons.Antigravity className="h-4 w-4" />;
+    case "claude":
+      return <QuotaIcons.Spark className="h-4 w-4 text-orange-500" />;
     case "codex":
       return <QuotaIcons.OpenAI className="h-4 w-4 text-emerald-500" />;
     case "gemini-cli":

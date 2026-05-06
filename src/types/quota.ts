@@ -1,6 +1,6 @@
 import type { AuthFile } from "@/types/auth";
 
-export type ProviderType = "antigravity" | "codex" | "gemini-cli" | "kimi" | "unknown";
+export type ProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unknown";
 export type ProviderFilter = "all" | Exclude<ProviderType, "unknown">;
 
 export interface QuotaState {
@@ -26,10 +26,16 @@ export interface ModelData {
 }
 
 export interface BucketData {
+  id?: string;
+  label?: string;
   model_id?: string;
   modelId?: string;
+  tokenType?: string | null;
+  token_type?: string | null;
   remaining_fraction?: number;
   remainingFraction?: number;
+  remainingAmount?: number | null;
+  remaining_amount?: number | null;
   reset_time?: string | number;
   resetTime?: string | number;
 }
@@ -37,8 +43,14 @@ export interface BucketData {
 export interface RateLimitWindow {
   used_percent?: number;
   usedPercent?: number;
+  remainingPercent?: number | null;
+  remaining_percent?: number | null;
   reset_at?: string | number;
   resetAt?: string | number;
+  resetTime?: string | number;
+  reset_time?: string | number;
+  label?: string;
+  id?: string;
 }
 
 export interface RateLimitData {
@@ -60,12 +72,19 @@ export interface KimiQuotaRow {
 
 export interface QuotaData {
   models?: Record<string, ModelData>;
+  groups?: Array<{ id: string; label: string; models: string[]; remainingFraction: number; resetTime?: string | number }>;
   rate_limit?: RateLimitData;
   rateLimit?: RateLimitData;
+  windows?: RateLimitWindow[];
   buckets?: BucketData[];
   rows?: KimiQuotaRow[];
   plan_type?: string;
   planType?: string;
+  extra_usage?: Record<string, unknown> | null;
+  extraUsage?: Record<string, unknown> | null;
+  tierLabel?: string | null;
+  tierId?: string | null;
+  creditBalance?: number | null;
 }
 
 export interface CacheData {

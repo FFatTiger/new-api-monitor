@@ -2,6 +2,16 @@ import type { AuthFile } from "@/types/auth";
 
 import { apiFetch } from "@/lib/quota/api-client";
 import { parseIdTokenPayload } from "@/lib/quota/parse-id-token";
+import {
+  buildCodexQuotaWindows,
+  CODEX_REQUEST_HEADERS,
+  CODEX_USAGE_URL,
+  getApiCallErrorMessage,
+  normalizeApiCallEnvelope,
+  normalizeCodexPlanType,
+  normalizeStringValue,
+  parseJsonMaybe,
+} from "@/lib/quota/upstream";
 
 const extractAccountId = (value: unknown): string | null => {
   const payload = parseIdTokenPayload(value);
@@ -9,6 +19,15 @@ const extractAccountId = (value: unknown): string | null => {
 
   const accountId = payload.chatgpt_account_id || payload.chatgptAccountId;
   return typeof accountId === "string" && accountId.trim() ? accountId.trim() : null;
+};
+
+const extractPlanType = (file: AuthFile, payload?: Record<string, unknown>): string | null => {
+  const tokenPayload = parseIdTokenPayload(file.idToken);
+  return (
+    normalizeCodexPlanType(payload?.plan_type ?? payload?.planType) ??
+    normalizeCodexPlanType(file.planType ?? file.plan_type) ??
+    normalizeCodexPlanType(tokenPayload?.plan_type ?? tokenPayload?.planType)
+  );
 };
 
 export const fetchCodexQuota = async (file: AuthFile) => {
@@ -28,40 +47,31 @@ export const fetchCodexQuota = async (file: AuthFile) => {
     body: JSON.stringify({
       authIndex,
       method: "GET",
-      url: "https://chatgpt.com/backend-api/wham/usage",
+      url: CODEX_USAGE_URL,
       header: {
-        Authorization: "Bearer $TOKEN$",
-        "Content-Type": "application/json",
-        "User-Agent": "codex_cli_rs/0.76.0 (Debian 13.0.0; x86_64) WindowsTerminal",
+        ...CODEX_REQUEST_HEADERS,
         "Chatgpt-Account-Id": accountId,
       },
     }),
   });
 
-  const json = await apiResponse.json();
-  const statusCode = json.statusCode || json.status_code || 0;
+  const json = normalizeApiCallEnvelope(await apiResponse.json());
+  const statusCode = json.statusCode;
 
   if (statusCode < 200 || statusCode >= 300) {
-    const bodyParsed =
-      typeof json.body === "string"
-        ? (() => {
-            try {
-              return JSON.parse(json.body);
-            } catch {
-              return null;
-            }
-          })()
-        : json.body;
-    const errorMessage = bodyParsed?.error?.message || bodyParsed?.message || json.bodyText || `HTTP ${statusCode}`;
-    throw new Error(`API Error ${statusCode}: ${errorMessage}`);
+    throw new Error(`API Error ${getApiCallErrorMessage(json)}`);
   }
 
-  let body = json.body;
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body.trim());
-    } catch {}
+  const body = parseJsonMaybe(json.body ?? json.bodyText);
+  if (!body || typeof body !== "object") {
+    throw new Error("No quota data available");
   }
 
-  return body;
+  const payload = body as Record<string, unknown>;
+  return {
+    ...payload,
+    planType: extractPlanType(file, payload),
+    plan_type: normalizeStringValue(payload.plan_type ?? payload.planType) ?? extractPlanType(file, payload) ?? undefined,
+    windows: buildCodexQuotaWindows(payload),
+  };
 };

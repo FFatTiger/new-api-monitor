@@ -22,6 +22,8 @@ cp .env.example .env.local
 
 ```bash
 DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE"
+API_BASE_URL="https://your-api-management-host"
+API_MANAGEMENT_KEY="your-server-only-management-key"
 ```
 
 ## Docker
@@ -43,6 +45,8 @@ docker run --rm -p 31891:31891 \
   -e HOSTNAME=0.0.0.0 \
   -e PORT=31891 \
   -e DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE" \
+  -e API_BASE_URL="https://your-api-management-host" \
+  -e API_MANAGEMENT_KEY="your-server-only-management-key" \
   fffattiger/new-api-monitor:latest
 ```
 
@@ -56,6 +60,8 @@ docker run --rm -p 31891:31891 \
 
 关键环境变量：
 - `NEW_API_MONITOR_DATABASE_URL`
+- `NEW_API_MONITOR_API_BASE_URL`
+- `NEW_API_MONITOR_API_MANAGEMENT_KEY`
 - `NEW_API_MONITOR_PORT`，默认 `31891`
 
 如果和 `new-api` 的 `postgres` 在同一个 Docker network / stack，可使用类似：

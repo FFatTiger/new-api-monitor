@@ -23,6 +23,28 @@ const emptyCacheSnapshot: CacheSnapshot = {
   quotas: {},
 };
 
+const MAX_CONCURRENT_QUOTA_REQUESTS = 3;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await mapper(items[currentIndex]);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
+
 const fetchUsageStats = async () => {
   try {
     const response = await apiFetch("/usage");
@@ -58,6 +80,18 @@ export const useQuota = () => {
       const files = data.files || [];
       setAuthFiles(files);
 
+      if (!forceRefresh) {
+        setQuotas((previous) => {
+          const nextQuotas: Record<string, QuotaState> = {};
+          files.forEach((file) => {
+            nextQuotas[file.authIndex] = previous[file.authIndex] || { loading: false };
+          });
+          return nextQuotas;
+        });
+        setCacheLoaded(true);
+        return;
+      }
+
       const usageStatsPromise = fetchUsageStats();
       const initialQuotas: Record<string, QuotaState> = {};
       files.forEach((file) => {
@@ -65,9 +99,18 @@ export const useQuota = () => {
       });
       setQuotas(initialQuotas);
 
-      const results = await Promise.all(
-        files.map(async (file) => {
+      const results = await mapWithConcurrency(
+        files,
+        MAX_CONCURRENT_QUOTA_REQUESTS,
+        async (file) => {
           const provider = getProviderType(file);
+          if (file.disabled || file.unavailable) {
+            return {
+              key: file.authIndex,
+              state: { loading: false, error: "Disabled (Skipped)", lastUpdated: Date.now() } as QuotaState,
+            };
+          }
+
           if (provider === "gemini-cli" && file.runtimeOnly) {
             return {
               key: file.authIndex,
@@ -91,7 +134,7 @@ export const useQuota = () => {
               } as QuotaState,
             };
           }
-        }),
+        },
       );
 
       const usageStats = await usageStatsPromise;

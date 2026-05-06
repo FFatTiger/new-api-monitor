@@ -2,6 +2,13 @@ import type { AuthFile } from "@/types/auth";
 import type { KimiQuotaRow } from "@/types/quota";
 
 import { apiFetch } from "@/lib/quota/api-client";
+import {
+  getApiCallErrorMessage,
+  KIMI_REQUEST_HEADERS,
+  KIMI_USAGE_URL,
+  normalizeApiCallEnvelope,
+  parseJsonMaybe,
+} from "@/lib/quota/upstream";
 
 function toInt(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
@@ -148,37 +155,19 @@ export const fetchKimiQuota = async (file: AuthFile): Promise<{ rows: KimiQuotaR
     body: JSON.stringify({
       authIndex,
       method: "GET",
-      url: "https://api.kimi.com/coding/v1/usages",
-      header: {
-        Authorization: "Bearer $TOKEN$",
-      },
+      url: KIMI_USAGE_URL,
+      header: { ...KIMI_REQUEST_HEADERS },
     }),
   });
 
-  const json = await apiResponse.json();
-  const statusCode = json.statusCode || json.status_code || 0;
+  const json = normalizeApiCallEnvelope(await apiResponse.json());
+  const statusCode = json.statusCode;
 
   if (statusCode < 200 || statusCode >= 300) {
-    const bodyParsed =
-      typeof json.body === "string"
-        ? (() => {
-            try {
-              return JSON.parse(json.body);
-            } catch {
-              return null;
-            }
-          })()
-        : json.body;
-    const errorMessage = bodyParsed?.error?.message || bodyParsed?.message || json.bodyText || `HTTP ${statusCode}`;
-    throw new Error(`API Error ${statusCode}: ${errorMessage}`);
+    throw new Error(`API Error ${getApiCallErrorMessage(json)}`);
   }
 
-  let body = json.body;
-  if (typeof body === "string") {
-    try {
-      body = JSON.parse(body.trim());
-    } catch {}
-  }
+  const body = parseJsonMaybe(json.body ?? json.bodyText);
 
   const rows = buildKimiQuotaRows(body as Record<string, unknown>);
   if (rows.length === 0) {

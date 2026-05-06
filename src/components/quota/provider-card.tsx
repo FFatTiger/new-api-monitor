@@ -12,13 +12,25 @@ import { QuotaIcons } from "@/components/quota/quota-icons";
 function getCodexPlanBadge(data: Record<string, unknown> | undefined): string | null {
   if (!data) return null;
 
-  const planType = String(data.plan_type || data.planType || "").toLowerCase();
+  const planType = String(data.plan_type || data.planType || "").toLowerCase().replace(/[-_]/g, "");
   if (planType.includes("enterprise")) return "Enterprise";
   if (planType.includes("team")) return "Team";
+  if (planType.includes("prolite")) return "Pro 5x";
   if (planType.includes("pro")) return "Pro";
   if (planType.includes("plus")) return "Plus";
   if (planType.includes("free") || !planType) return "Free";
   return planType;
+}
+
+function getClaudePlanBadge(data: Record<string, unknown> | undefined): string | null {
+  if (!data) return null;
+
+  const planType = String(data.planType || data.plan_type || "").toLowerCase();
+  if (planType === "max") return "Max";
+  if (planType === "team") return "Team";
+  if (planType === "pro") return "Pro";
+  if (planType === "free") return "Free";
+  return planType || null;
 }
 
 type ProviderCardProps = {
@@ -48,6 +60,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
 
   const showProviderBadge = selectedProvider === "all";
   const codexPlan = getCodexPlanBadge(quota.data as Record<string, unknown> | undefined);
+  const claudePlan = getClaudePlanBadge(quota.data as Record<string, unknown> | undefined);
   const isLimitReached = quota.data?.rate_limit?.limit_reached || quota.data?.rateLimit?.limit_reached;
 
   return (
@@ -63,6 +76,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
             </h3>
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem]">
               {showProviderBadge ? <span className="ds-kicker">{provider === "unknown" ? file.type || "未知" : provider}</span> : null}
+              {provider === "claude" && claudePlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{claudePlan}</span> : null}
               {provider === "codex" && codexPlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{codexPlan}</span> : null}
               {provider === "codex" && isLimitReached ? <span className="ds-pill px-2 py-1 text-[0.66rem] text-red-500">已达上限</span> : null}
               {file.runtimeOnly ? <span className="ds-pill px-2 py-1 text-[0.66rem] text-amber-500">RT</span> : null}
@@ -73,7 +87,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
         <div className="mt-0.5 shrink-0">
           {quota.loading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--surface-ring-soft)] border-t-[var(--foreground)]" /> : null}
           {!quota.loading && quota.error ? <QuotaIcons.Alert className="h-4 w-4 text-red-500" /> : null}
-          {!quota.loading && !quota.error ? <QuotaIcons.Check className="h-4 w-4 text-emerald-500" /> : null}
+          {!quota.loading && !quota.error && quota.data ? <QuotaIcons.Check className="h-4 w-4 text-emerald-500" /> : null}
         </div>
       </div>
 
@@ -85,6 +99,8 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
           </div>
         ) : quota.error ? (
           <p className="text-[0.78rem] leading-5 text-red-500">{quota.error}</p>
+        ) : !quota.data ? (
+          <p className="text-[0.78rem] leading-5 text-[var(--foreground-faint)]">点击刷新获取配额</p>
         ) : (
           <QuotaContent type={provider} data={quota.data || {}} />
         )}

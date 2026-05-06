@@ -1,6 +1,14 @@
 import type { AuthFile } from "@/types/auth";
 
 import { apiFetch } from "@/lib/quota/api-client";
+import {
+  ANTIGRAVITY_QUOTA_URLS,
+  ANTIGRAVITY_REQUEST_HEADERS,
+  buildAntigravityQuotaGroups,
+  getApiCallErrorMessage,
+  normalizeApiCallEnvelope,
+  parseJsonMaybe,
+} from "@/lib/quota/upstream";
 
 export const fetchAntigravityQuota = async (file: AuthFile) => {
   const authIndex = file.authIndex;
@@ -9,16 +17,11 @@ export const fetchAntigravityQuota = async (file: AuthFile) => {
   }
 
   const projectId = file.projectId || "bamboo-precept-lgxtn";
-  const urls = [
-    "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
-    "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels",
-    "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
-  ];
-  const requestBodies = [JSON.stringify({ projectId }), JSON.stringify({ project: projectId })];
+  const requestBodies = [JSON.stringify({ project: projectId }), JSON.stringify({ projectId })];
 
   let lastError = "";
 
-  for (const url of urls) {
+  for (const url of ANTIGRAVITY_QUOTA_URLS) {
     for (let attempt = 0; attempt < requestBodies.length; attempt += 1) {
       try {
         const apiResponse = await apiFetch("/quota", {
@@ -28,31 +31,17 @@ export const fetchAntigravityQuota = async (file: AuthFile) => {
             authIndex,
             method: "POST",
             url,
-            header: {
-              Authorization: "Bearer $TOKEN$",
-              "Content-Type": "application/json",
-              "User-Agent": "antigravity/1.11.5 windows/amd64",
-            },
+            header: { ...ANTIGRAVITY_REQUEST_HEADERS },
             data: requestBodies[attempt],
           }),
         });
 
-        const json = await apiResponse.json();
-        const statusCode = json.statusCode || json.status_code || 0;
+        const json = normalizeApiCallEnvelope(await apiResponse.json());
+        const statusCode = json.statusCode;
 
         if (statusCode < 200 || statusCode >= 300) {
-          const bodyParsed =
-            typeof json.body === "string"
-              ? (() => {
-                  try {
-                    return JSON.parse(json.body);
-                  } catch {
-                    return null;
-                  }
-                })()
-              : json.body;
-          const errorMessage = bodyParsed?.error?.message || bodyParsed?.message || json.bodyText || `HTTP ${statusCode}`;
-          lastError = `${statusCode} ${errorMessage}`;
+          const errorMessage = getApiCallErrorMessage(json);
+          lastError = errorMessage;
 
           if (statusCode === 400) {
             const normalizedError = String(errorMessage).toLowerCase();
@@ -72,14 +61,24 @@ export const fetchAntigravityQuota = async (file: AuthFile) => {
           continue;
         }
 
-        let body = json.body;
-        if (typeof body === "string") {
-          try {
-            body = JSON.parse(body.trim());
-          } catch {}
+        const body = parseJsonMaybe(json.body ?? json.bodyText);
+        const payload =
+          body && typeof body === "object" && "models" in body
+            ? (body as Record<string, unknown>)
+            : body && typeof body === "object" && "body" in body
+              ? (parseJsonMaybe((body as Record<string, unknown>).body) as Record<string, unknown> | null)
+              : null;
+        const models = payload?.models;
+
+        if (!models || typeof models !== "object" || Array.isArray(models)) {
+          lastError = "No quota data available";
+          continue;
         }
 
-        return body;
+        return {
+          ...payload,
+          groups: buildAntigravityQuotaGroups(models as Parameters<typeof buildAntigravityQuotaGroups>[0]),
+        };
       } catch (error: unknown) {
         lastError = error instanceof Error ? error.message : String(error);
       }

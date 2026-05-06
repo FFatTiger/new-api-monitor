@@ -14,6 +14,7 @@ import type { ProviderFilter, QuotaState } from "@/types/quota";
 const providerTabs: Array<{ key: ProviderFilter; label: string }> = [
   { key: "all", label: "全部" },
   { key: "antigravity", label: "Antigravity" },
+  { key: "claude", label: "Claude" },
   { key: "codex", label: "Codex" },
   { key: "gemini-cli", label: "Gemini CLI" },
   { key: "kimi", label: "Kimi" },
@@ -102,6 +103,24 @@ function getAntigravityMetrics(quota: QuotaState | undefined, group: Antigravity
 }
 
 function getCodexMetrics(quota: QuotaState | undefined, window: "primary" | "secondary") {
+  const windows = quota?.data?.windows;
+  if (Array.isArray(windows)) {
+    const match = windows.find((item) =>
+      window === "primary" ? item.id === "codex-five-hour" : item.id === "codex-weekly",
+    );
+    if (match) {
+      const remaining =
+        match.remainingPercent ??
+        match.remaining_percent ??
+        (match.used_percent === undefined ? undefined : Math.max(0, 100 - match.used_percent));
+      const resetTime = parseResetTime(match.resetTime ?? match.reset_time ?? match.reset_at ?? match.resetAt);
+
+      if (remaining !== undefined || resetTime !== undefined) {
+        return { remaining: remaining ?? undefined, resetTime };
+      }
+    }
+  }
+
   const rateLimit = quota?.data?.rate_limit || quota?.data?.rateLimit;
   if (!rateLimit) return null;
 
@@ -129,6 +148,7 @@ export function QuotaPageClient() {
     const counts: Record<ProviderFilter, number> = {
       all: authFiles.length,
       antigravity: 0,
+      claude: 0,
       codex: 0,
       "gemini-cli": 0,
       kimi: 0,
@@ -136,7 +156,7 @@ export function QuotaPageClient() {
 
     authFiles.forEach((file) => {
       const provider = getProviderType(file);
-      if (provider === "antigravity" || provider === "codex" || provider === "gemini-cli" || provider === "kimi") {
+      if (provider === "antigravity" || provider === "claude" || provider === "codex" || provider === "gemini-cli" || provider === "kimi") {
         counts[provider] += 1;
       }
     });
@@ -147,7 +167,7 @@ export function QuotaPageClient() {
   const sortedFiles = useMemo(() => {
     const filtered = selectedProvider === "all" ? authFiles : authFiles.filter((file) => getProviderType(file) === selectedProvider);
 
-    if (selectedProvider === "all" || selectedProvider === "gemini-cli" || selectedProvider === "kimi" || sortOption === "default") {
+    if (selectedProvider === "all" || selectedProvider === "claude" || selectedProvider === "gemini-cli" || selectedProvider === "kimi" || sortOption === "default") {
       return [...filtered].sort((a, b) => {
         const providerA = getProviderType(a);
         const providerB = getProviderType(b);
@@ -310,7 +330,7 @@ export function QuotaPageClient() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {sortedFiles.map((file) => {
             const provider = getProviderType(file);
-            const quota = quotas[file.authIndex] || { loading: true };
+            const quota = quotas[file.authIndex] || { loading: false };
             return (
               <ProviderCard
                 key={file.authIndex}

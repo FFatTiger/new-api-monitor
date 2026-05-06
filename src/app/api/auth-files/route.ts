@@ -50,7 +50,7 @@ function extractAndMaskAccountName(name: string): string {
   if (!name) return name;
 
   const base = name.replace(/\.json$/i, "");
-  const prefixes = ["antigravity-", "codex-", "gemini-cli-"];
+  const prefixes = ["antigravity-", "claude-", "codex-", "gemini-cli-", "kimi-"];
   let remaining = base;
 
   for (const prefix of prefixes) {
@@ -119,10 +119,13 @@ interface SanitizedAuthFile {
   type: string;
   provider: string;
   runtimeOnly: boolean;
+  disabled: boolean;
+  unavailable: boolean;
   projectId: string | null;
   idToken: string | Record<string, unknown> | null;
   account: string | null;
   statusMessage: string | null;
+  planType: string | null;
 }
 
 async function fetchFileContent(name: string): Promise<Record<string, unknown> | null> {
@@ -163,6 +166,8 @@ function sanitizeAuthFile(file: RawAuthFile, projectId: string | null): Sanitize
     type: String(file.type || ""),
     provider: String(file.provider || ""),
     runtimeOnly,
+    disabled: file.disabled === true || file.disabled === "true",
+    unavailable: file.unavailable === true || file.unavailable === "true",
     projectId,
     idToken: (file.id_token || metadata?.id_token || attributes?.id_token || null) as
       | string
@@ -170,6 +175,7 @@ function sanitizeAuthFile(file: RawAuthFile, projectId: string | null): Sanitize
       | null,
     account: (metadata?.account || attributes?.account || null) as string | null,
     statusMessage: sanitizeStatusMessage(rawStatusMessage),
+    planType: (file.planType || file.plan_type || metadata?.planType || metadata?.plan_type || attributes?.planType || attributes?.plan_type || null) as string | null,
   };
 }
 

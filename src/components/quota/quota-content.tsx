@@ -45,18 +45,22 @@ const aggregateAntigravityModels = (models: Record<string, ModelData>) => {
 function renderCodexWindow(windowData: RateLimitWindow | undefined, label: string) {
   if (!windowData) return null;
 
-  const usedPercent = windowData.used_percent ?? windowData.usedPercent ?? 0;
-  const remaining = Math.max(0, 100 - usedPercent);
-  const resetAt = windowData.reset_at ?? windowData.resetAt;
+  const remaining =
+    windowData.remainingPercent ??
+    windowData.remaining_percent ??
+    (windowData.used_percent === undefined && windowData.usedPercent === undefined
+      ? null
+      : Math.max(0, 100 - (windowData.used_percent ?? windowData.usedPercent ?? 0)));
+  const resetAt = windowData.resetTime ?? windowData.reset_time ?? windowData.reset_at ?? windowData.resetAt;
 
   return (
     <ProgressBar
-      key={label}
-      label={label}
-      percent={remaining}
-      valueLabel={`${Math.round(remaining)}%`}
+      key={windowData.id || label}
+      label={windowData.label || label}
+      percent={remaining ?? 0}
+      valueLabel={remaining === null ? "--" : `${Math.round(remaining)}%`}
       resetTime={resetAt}
-      colorClass={getProgressTone(remaining / 100)}
+      colorClass={remaining === null ? "bg-[var(--foreground-faint)]/40" : getProgressTone(remaining / 100)}
     />
   );
 }
@@ -65,6 +69,24 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
   if (!data) return null;
 
   if (type === "antigravity") {
+    const upstreamGroups = data.groups || [];
+    if (upstreamGroups.length) {
+      return (
+        <div className="space-y-2.5">
+          {upstreamGroups.map((group) => (
+            <ProgressBar
+              key={group.id}
+              label={group.label}
+              percent={group.remainingFraction * 100}
+              valueLabel={`${Math.round(group.remainingFraction * 100)}%`}
+              resetTime={group.resetTime}
+              colorClass={getProgressTone(group.remainingFraction)}
+            />
+          ))}
+        </div>
+      );
+    }
+
     const groups = aggregateAntigravityModels(data.models || {});
     if (!groups.length) {
       return <div className="text-[0.78rem] text-[var(--foreground-faint)]">暂无配额信息</div>;
@@ -87,6 +109,11 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
   }
 
   if (type === "codex") {
+    const windows = data.windows || [];
+    if (windows.length) {
+      return <div className="space-y-2.5">{windows.map((window) => renderCodexWindow(window, window.label || window.id || "窗口"))}</div>;
+    }
+
     const rateLimit = data.rate_limit || data.rateLimit;
     if (!rateLimit) {
       return <div className="text-[0.78rem] text-[var(--foreground-faint)]">暂无数据</div>;
@@ -108,6 +135,18 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
 
     return (
       <div className="space-y-2.5">
+        {data.tierLabel || data.tierId ? (
+          <div className="flex items-center justify-between text-[0.72rem]">
+            <span className="text-[var(--foreground-soft)]">Tier</span>
+            <span className="ds-mono text-[var(--foreground)]">{String(data.tierLabel || data.tierId)}</span>
+          </div>
+        ) : null}
+        {typeof data.creditBalance === "number" ? (
+          <div className="flex items-center justify-between text-[0.72rem]">
+            <span className="text-[var(--foreground-soft)]">Credits</span>
+            <span className="ds-mono text-[var(--foreground)]">{data.creditBalance}</span>
+          </div>
+        ) : null}
         {buckets.map((bucket: BucketData, index: number) => {
           const modelId = bucket.model_id || bucket.modelId || `bucket-${index}`;
           const fraction = normalizeFraction(bucket.remaining_fraction ?? bucket.remainingFraction);
@@ -116,7 +155,7 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
           return (
             <ProgressBar
               key={`${modelId}-${index}`}
-              label={modelId}
+              label={bucket.label || modelId}
               percent={fraction * 100}
               valueLabel={`${Math.round(fraction * 100)}%`}
               resetTime={resetTime}
@@ -126,6 +165,15 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
         })}
       </div>
     );
+  }
+
+  if (type === "claude") {
+    const windows = data.windows || [];
+    if (!windows.length) {
+      return <div className="text-[0.78rem] text-[var(--foreground-faint)]">暂无数据</div>;
+    }
+
+    return <div className="space-y-2.5">{windows.map((window) => renderCodexWindow(window, window.label || window.id || "窗口"))}</div>;
   }
 
   if (type === "kimi") {

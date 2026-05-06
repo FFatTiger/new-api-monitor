@@ -8,4 +8,8 @@ export interface AuthFile {
   idToken: string | Record<string, unknown> | null;
   account: string | null;
   statusMessage?: string | null;
+  disabled?: boolean;
+  unavailable?: boolean;
+  planType?: string | null;
+  plan_type?: string | null;
 }

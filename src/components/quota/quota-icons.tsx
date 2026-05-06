@@ -40,6 +40,12 @@ export const QuotaIcons = {
       <path d="M17.5 19c0-1.7-1.3-3-3-3h-1.1c-.2-3.4-3.1-6-6.5-6-3.1 0-5.7 2.3-6.4 5.3-.2 0-.4 0-.5 0-2.2 0-4 1.8-4 4s1.8 4 4 4h10.5c3 0 5.5-2.5 5.5-5.5 0-.1 0-.3 0-.5z" />
     </svg>
   ),
+  Spark: (props: SVGProps<SVGSVGElement>) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z" />
+      <path d="M19 15l.8 2.7L22 18.5l-2.2.8L19 22l-.8-2.7-2.2-.8 2.2-.8L19 15z" />
+    </svg>
+  ),
   Antigravity: (props: SVGProps<SVGSVGElement>) => (
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 59" width="20" height="20" {...props}>
       <path d="M0,0 L8,0 L14,4 L19,14 L27,40 L32,50 L36,54 L35,59 L30,59 L22,52 L11,35 L6,33 L-1,34 L-6,39 L-14,52 L-22,59 L-28,59 L-27,53 L-22,47 L-17,34 L-10,12 L-5,3 Z" fill="#3789F9" transform="translate(28,0)"/>
