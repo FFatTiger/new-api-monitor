@@ -298,6 +298,18 @@ export function normalizeCodexPlanType(value: unknown): string | null {
   return normalized;
 }
 
+export function getCodexPlanLabel(value: unknown): string | null {
+  const planType = normalizeCodexPlanType(value);
+  if (!planType) return "Free";
+  if (planType.includes("enterprise")) return "Enterprise";
+  if (planType.includes("team")) return "Team";
+  if (planType.includes("prolite")) return "Pro 5x";
+  if (planType.includes("pro")) return "Pro 20x";
+  if (planType.includes("plus")) return "Plus";
+  if (planType.includes("free")) return "Free";
+  return planType;
+}
+
 export function resolveProviderType(file: { type?: unknown; provider?: unknown }): QuotaProviderType {
   const raw = normalizeStringValue(file.type ?? file.provider)?.toLowerCase() ?? "";
   if (raw === "antigravity") return "antigravity";

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildAntigravityQuotaGroups,
   buildCodexQuotaWindows,
+  getCodexPlanLabel,
   normalizeCodexPlanType,
   resolveProviderType,
 } from "./upstream.ts";
@@ -17,6 +18,8 @@ describe("upstream quota compatibility", () => {
     assert.equal(normalizeCodexPlanType("pro_lite"), "prolite");
     assert.equal(normalizeCodexPlanType("pro-lite"), "prolite");
     assert.equal(normalizeCodexPlanType("team"), "team");
+    assert.equal(getCodexPlanLabel("pro_lite"), "Pro 5x");
+    assert.equal(getCodexPlanLabel("pro"), "Pro 20x");
   });
 
   it("builds Codex windows for usage, code review, and additional rate limits", () => {

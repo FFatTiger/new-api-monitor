@@ -8,18 +8,12 @@ import type { ProviderFilter, ProviderType, QuotaState } from "@/types/quota";
 import { QuotaContent } from "@/components/quota/quota-content";
 import { ProviderIcon } from "@/components/quota/provider-icon";
 import { QuotaIcons } from "@/components/quota/quota-icons";
+import { getCodexPlanLabel } from "@/lib/quota/upstream";
 
 function getCodexPlanBadge(data: Record<string, unknown> | undefined): string | null {
   if (!data) return null;
 
-  const planType = String(data.plan_type || data.planType || "").toLowerCase().replace(/[-_]/g, "");
-  if (planType.includes("enterprise")) return "Enterprise";
-  if (planType.includes("team")) return "Team";
-  if (planType.includes("prolite")) return "Pro 5x";
-  if (planType.includes("pro")) return "Pro";
-  if (planType.includes("plus")) return "Plus";
-  if (planType.includes("free") || !planType) return "Free";
-  return planType;
+  return getCodexPlanLabel(data.plan_type || data.planType);
 }
 
 function getClaudePlanBadge(data: Record<string, unknown> | undefined): string | null {
