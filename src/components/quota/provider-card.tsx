@@ -55,10 +55,11 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
   const showProviderBadge = selectedProvider === "all";
   const codexPlan = getCodexPlanBadge(quota.data as Record<string, unknown> | undefined);
   const claudePlan = getClaudePlanBadge(quota.data as Record<string, unknown> | undefined);
+  const isPremiumCodexPlan = provider === "codex" && (codexPlan === "Pro 5x" || codexPlan === "Pro 20x");
   const isLimitReached = quota.data?.rate_limit?.limit_reached || quota.data?.rateLimit?.limit_reached;
 
   return (
-    <article className="ds-card-muted ds-card-interactive flex h-full flex-col p-4">
+    <article className={["ds-card-muted ds-card-interactive flex h-full flex-col p-4", isPremiumCodexPlan ? "ds-card-premium-tier" : ""].filter(Boolean).join(" ")}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 flex items-center gap-3">
           <div className="rounded-[12px] bg-[var(--background-elevated)] p-2 shadow-[0_0_0_1px_var(--surface-ring-soft)]">
@@ -71,7 +72,9 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem]">
               {showProviderBadge ? <span className="ds-kicker">{provider === "unknown" ? file.type || "未知" : provider}</span> : null}
               {provider === "claude" && claudePlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{claudePlan}</span> : null}
-              {provider === "codex" && codexPlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{codexPlan}</span> : null}
+              {provider === "codex" && codexPlan ? (
+                <span className={["ds-pill px-2 py-1 text-[0.66rem]", isPremiumCodexPlan ? "ds-pill-premium-tier" : ""].filter(Boolean).join(" ")}>{codexPlan}</span>
+              ) : null}
               {provider === "codex" && isLimitReached ? <span className="ds-pill px-2 py-1 text-[0.66rem] text-red-500">已达上限</span> : null}
               {file.runtimeOnly ? <span className="ds-pill px-2 py-1 text-[0.66rem] text-amber-500">RT</span> : null}
             </div>

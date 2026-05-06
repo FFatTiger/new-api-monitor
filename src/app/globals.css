@@ -173,6 +173,16 @@ input::-webkit-calendar-picker-indicator {
   box-shadow: var(--shadow-panel-soft);
 }
 
+.ds-card-premium-tier {
+  background:
+    linear-gradient(180deg, rgba(202, 138, 4, 0.055) 0%, rgba(202, 138, 4, 0) 42%),
+    linear-gradient(180deg, var(--background-elevated) 0%, var(--background-muted) 100%);
+  box-shadow:
+    0 0 0 1px rgba(202, 138, 4, 0.32),
+    0 12px 24px -24px rgba(202, 138, 4, 0.52),
+    inset 0 0 0 1px rgba(255, 248, 220, 0.36);
+}
+
 .ds-card-interactive {
   transition:
     box-shadow 180ms ease,
@@ -185,6 +195,13 @@ input::-webkit-calendar-picker-indicator {
   box-shadow: var(--shadow-panel-hover);
 }
 
+.ds-card-premium-tier.ds-card-interactive:hover {
+  box-shadow:
+    0 0 0 1px rgba(202, 138, 4, 0.42),
+    0 14px 28px -24px rgba(202, 138, 4, 0.58),
+    inset 0 0 0 1px rgba(255, 248, 220, 0.44);
+}
+
 .ds-pill {
   display: inline-flex;
   align-items: center;
@@ -192,6 +209,36 @@ input::-webkit-calendar-picker-indicator {
   border-radius: 9999px;
   background: var(--pill-background);
   box-shadow: 0px 0px 0px 1px var(--surface-ring-soft);
+}
+
+.ds-pill-premium-tier {
+  background: rgba(202, 138, 4, 0.09);
+  color: #8a5a00;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgba(202, 138, 4, 0.28);
+}
+
+:root[data-theme="dark"] .ds-card-premium-tier {
+  background:
+    linear-gradient(180deg, rgba(250, 204, 21, 0.07) 0%, rgba(250, 204, 21, 0) 42%),
+    linear-gradient(180deg, var(--background-elevated) 0%, var(--background-muted) 100%);
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.28),
+    0 16px 30px -26px rgba(250, 204, 21, 0.34),
+    inset 0 0 0 1px rgba(255, 229, 138, 0.08);
+}
+
+:root[data-theme="dark"] .ds-card-premium-tier.ds-card-interactive:hover {
+  box-shadow:
+    0 0 0 1px rgba(250, 204, 21, 0.4),
+    0 18px 34px -26px rgba(250, 204, 21, 0.42),
+    inset 0 0 0 1px rgba(255, 229, 138, 0.11);
+}
+
+:root[data-theme="dark"] .ds-pill-premium-tier {
+  background: rgba(250, 204, 21, 0.11);
+  color: #f2cc67;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.28);
 }
 
 .ds-input {
