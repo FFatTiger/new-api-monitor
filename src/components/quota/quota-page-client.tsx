@@ -9,6 +9,7 @@ import { ProviderTabs } from "@/components/quota/provider-tabs";
 import { useQuota } from "@/hooks/useQuota";
 import { normalizeFraction } from "@/lib/quota/normalize";
 import { getProviderType } from "@/lib/quota/providers";
+import { sortQuotaFiles } from "@/lib/quota/sort-policy";
 import type { ProviderFilter, QuotaState } from "@/types/quota";
 
 const providerTabs: Array<{ key: ProviderFilter; label: string }> = [
@@ -168,12 +169,7 @@ export function QuotaPageClient() {
     const filtered = selectedProvider === "all" ? authFiles : authFiles.filter((file) => getProviderType(file) === selectedProvider);
 
     if (selectedProvider === "all" || selectedProvider === "claude" || selectedProvider === "gemini-cli" || selectedProvider === "kimi" || sortOption === "default") {
-      return [...filtered].sort((a, b) => {
-        const providerA = getProviderType(a);
-        const providerB = getProviderType(b);
-        if (providerA !== providerB) return providerA.localeCompare(providerB);
-        return a.displayName.localeCompare(b.displayName);
-      });
+      return sortQuotaFiles(filtered, quotas, selectedProvider);
     }
 
     return [...filtered].sort((a, b) => {

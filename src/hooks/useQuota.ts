@@ -7,7 +7,8 @@ import type { QuotaState } from "@/types/quota";
 
 import { apiFetch } from "@/lib/quota/api-client";
 import { clearQuotaCache, CACHE_KEY, loadQuotaCache, saveQuotaCache } from "@/lib/quota/cache";
-import { fetchQuotaForFile, getProviderType } from "@/lib/quota/providers";
+import { getQuotaFetchSkipReason } from "@/lib/quota/fetch-policy";
+import { fetchQuotaForFile } from "@/lib/quota/providers";
 
 type UsageStatsResponse = {
   byAuthIndex?: Record<string, { success: number; failure: number }>;
@@ -63,7 +64,7 @@ export const useQuota = () => {
   const [quotas, setQuotas] = useState<Record<string, QuotaState>>(initialCache.quotas);
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const [cacheLoaded, setCacheLoaded] = useState(initialCache !== emptyCacheSnapshot);
 
   const loadAuthFiles = useCallback(async (forceRefresh = false) => {
@@ -103,18 +104,11 @@ export const useQuota = () => {
         files,
         MAX_CONCURRENT_QUOTA_REQUESTS,
         async (file) => {
-          const provider = getProviderType(file);
-          if (file.disabled || file.unavailable) {
+          const skipReason = getQuotaFetchSkipReason(file);
+          if (skipReason) {
             return {
               key: file.authIndex,
-              state: { loading: false, error: "Disabled (Skipped)", lastUpdated: Date.now() } as QuotaState,
-            };
-          }
-
-          if (provider === "gemini-cli" && file.runtimeOnly) {
-            return {
-              key: file.authIndex,
-              state: { loading: false, error: "Runtime-only (Skipped)", lastUpdated: Date.now() } as QuotaState,
+              state: { loading: false, error: skipReason, lastUpdated: Date.now() } as QuotaState,
             };
           }
 
@@ -162,6 +156,7 @@ export const useQuota = () => {
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
     if (autoRefresh) {
+      void loadAuthFiles(true);
       interval = setInterval(() => {
         void loadAuthFiles(true);
       }, 60_000);
@@ -175,7 +170,7 @@ export const useQuota = () => {
   }, [autoRefresh, loadAuthFiles]);
 
   useEffect(() => {
-    if (cacheLoaded || globalError) {
+    if (cacheLoaded || globalError || autoRefresh) {
       return;
     }
 
@@ -186,7 +181,7 @@ export const useQuota = () => {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [cacheLoaded, globalError, loadAuthFiles]);
+  }, [autoRefresh, cacheLoaded, globalError, loadAuthFiles]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
