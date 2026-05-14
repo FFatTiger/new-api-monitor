@@ -1,132 +1,12 @@
 import { NextResponse } from "next/server";
 
+import { extractProjectId, sanitizeAuthFile, type RawAuthFile } from "@/lib/quota/auth-files";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
 const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
-
-const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-const KEY_LIKE_TOKEN_REGEX =
-  /(sk-[A-Za-z0-9-_]{6,}|sk-ant-[A-Za-z0-9-_]{6,}|AIza[0-9A-Za-z-_]{8,}|AI[a-zA-Z0-9_-]{6,}|hf_[A-Za-z0-9]{6,}|pk_[A-Za-z0-9]{6,}|rk_[A-Za-z0-9]{6,})/g;
-
-function maskString(value: string): string {
-  if (!value) return value;
-
-  const length = value.length;
-  if (length <= 1) return "*";
-  if (length === 2) return `${value[0]}*`;
-  if (length === 3) return `${value[0]}*${value[2]}`;
-  if (length === 4) return `${value[0]}*${value.slice(-2)}`;
-  if (length === 5) return `${value.slice(0, 2)}*${value.slice(-2)}`;
-
-  const first = value.slice(0, 2);
-  const last = value.slice(-3);
-  const maskLength = Math.min(length - 5, 6);
-  return `${first}${"*".repeat(maskLength)}${last}`;
-}
-
-function maskEmail(email: string): string {
-  const atIndex = email.indexOf("@");
-  if (atIndex === -1) return maskString(email);
-
-  const local = email.slice(0, atIndex);
-  const domain = email.slice(atIndex + 1);
-  return `${maskString(local)}@${maskString(domain)}`;
-}
-
-function sanitizeStatusMessage(message: unknown): string | null {
-  if (typeof message !== "string") return null;
-
-  const trimmed = message.trim();
-  if (!trimmed) return null;
-
-  let sanitized = trimmed.replace(EMAIL_REGEX, (match) => maskEmail(match));
-  sanitized = sanitized.replace(KEY_LIKE_TOKEN_REGEX, (match) => maskString(match));
-  return sanitized;
-}
-
-function extractAndMaskAccountName(name: string): string {
-  if (!name) return name;
-
-  const base = name.replace(/\.json$/i, "");
-  const prefixes = ["antigravity-", "claude-", "codex-", "gemini-cli-", "kimi-"];
-  let remaining = base;
-
-  for (const prefix of prefixes) {
-    if (base.toLowerCase().startsWith(prefix)) {
-      remaining = base.slice(prefix.length);
-      break;
-    }
-  }
-
-  if (remaining.includes("@")) {
-    return maskEmail(remaining);
-  }
-
-  const underscoreParts = remaining.split("_");
-  if (underscoreParts.length >= 2) {
-    const lastPart = underscoreParts[underscoreParts.length - 1];
-    const secondLastPart = underscoreParts[underscoreParts.length - 2];
-
-    if (["com", "net", "org", "io"].includes(lastPart)) {
-      return maskString(underscoreParts.slice(0, -2).join("_"));
-    }
-
-    if (["gmail", "outlook", "hotmail"].includes(secondLastPart)) {
-      return maskString(underscoreParts.slice(0, -2).join("_"));
-    }
-  }
-
-  return maskString(remaining);
-}
-
-function extractProjectId(fileContent: Record<string, unknown>): string | null {
-  let projectId = fileContent.project_id || fileContent.projectId;
-  const installed = fileContent.installed as Record<string, unknown> | undefined;
-  const web = fileContent.web as Record<string, unknown> | undefined;
-
-  if (!projectId && installed) {
-    projectId = installed.project_id || installed.projectId;
-  }
-
-  if (!projectId && web) {
-    projectId = web.project_id || web.projectId;
-  }
-
-  return typeof projectId === "string" ? projectId : null;
-}
-
-interface RawAuthFile {
-  name: string;
-  type?: string;
-  provider?: string;
-  authIndex?: number | string;
-  auth_index?: number | string;
-  runtimeOnly?: boolean | string;
-  runtime_only?: boolean | string;
-  statusMessage?: string;
-  status_message?: string;
-  metadata?: Record<string, unknown>;
-  attributes?: Record<string, unknown>;
-  id_token?: string | Record<string, unknown>;
-  [key: string]: unknown;
-}
-
-interface SanitizedAuthFile {
-  authIndex: string;
-  displayName: string;
-  type: string;
-  provider: string;
-  runtimeOnly: boolean;
-  disabled: boolean;
-  unavailable: boolean;
-  projectId: string | null;
-  idToken: string | Record<string, unknown> | null;
-  account: string | null;
-  statusMessage: string | null;
-  planType: string | null;
-}
 
 async function fetchFileContent(name: string): Promise<Record<string, unknown> | null> {
   try {
@@ -147,36 +27,11 @@ async function fetchFileContent(name: string): Promise<Record<string, unknown> |
   }
 }
 
-function sanitizeAuthFile(file: RawAuthFile, projectId: string | null): SanitizedAuthFile {
-  const authIndex = String(file.authIndex ?? file.auth_index ?? "");
-  const runtimeOnly = Boolean(file.runtimeOnly || file.runtime_only);
-  const metadata = file.metadata as Record<string, unknown> | undefined;
-  const attributes = file.attributes as Record<string, unknown> | undefined;
-  const rawStatusMessage =
-    file.status_message ??
-    file.statusMessage ??
-    metadata?.status_message ??
-    metadata?.statusMessage ??
-    attributes?.status_message ??
-    attributes?.statusMessage;
-
-  return {
-    authIndex,
-    displayName: extractAndMaskAccountName(file.name),
-    type: String(file.type || ""),
-    provider: String(file.provider || ""),
-    runtimeOnly,
-    disabled: file.disabled === true || file.disabled === "true",
-    unavailable: file.unavailable === true || file.unavailable === "true",
-    projectId,
-    idToken: (file.id_token || metadata?.id_token || attributes?.id_token || null) as
-      | string
-      | Record<string, unknown>
-      | null,
-    account: (metadata?.account || attributes?.account || null) as string | null,
-    statusMessage: sanitizeStatusMessage(rawStatusMessage),
-    planType: (file.planType || file.plan_type || metadata?.planType || metadata?.plan_type || attributes?.planType || attributes?.plan_type || null) as string | null,
-  };
+function publicError(status = 500) {
+  return NextResponse.json(
+    { error: "Backend request failed" },
+    { status, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+  );
 }
 
 export async function GET() {
@@ -194,8 +49,8 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      return NextResponse.json({ error: `Backend error: ${response.status} ${text}` }, { status: response.status });
+      console.error("Failed to fetch auth files", response.status, await response.text());
+      return publicError(response.status);
     }
 
     const data = (await response.json()) as { files?: RawAuthFile[] };
@@ -223,10 +78,7 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json(
-      { error: message },
-      { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
-    );
+    console.error("Failed to serve auth files", error);
+    return publicError();
   }
 }

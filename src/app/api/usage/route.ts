@@ -82,7 +82,11 @@ export async function GET() {
 
     if (!response.ok) {
       const text = await response.text();
-      return NextResponse.json({ error: `Backend error: ${response.status} ${text}` }, { status: response.status });
+      console.error("Failed to fetch usage", response.status, text);
+      return NextResponse.json(
+        { error: "Backend request failed" },
+        { status: response.status, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+      );
     }
 
     const data = (await response.json()) as UsagePayload;
@@ -93,9 +97,9 @@ export async function GET() {
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Failed to serve usage", error);
     return NextResponse.json(
-      { error: message },
+      { error: "Backend request failed" },
       { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   }

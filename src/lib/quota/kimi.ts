@@ -4,8 +4,6 @@ import type { KimiQuotaRow } from "@/types/quota";
 import { apiFetch } from "@/lib/quota/api-client";
 import {
   getApiCallErrorMessage,
-  KIMI_REQUEST_HEADERS,
-  KIMI_USAGE_URL,
   normalizeApiCallEnvelope,
   parseJsonMaybe,
 } from "@/lib/quota/upstream";
@@ -154,9 +152,7 @@ export const fetchKimiQuota = async (file: AuthFile): Promise<{ rows: KimiQuotaR
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       authIndex,
-      method: "GET",
-      url: KIMI_USAGE_URL,
-      header: { ...KIMI_REQUEST_HEADERS },
+      provider: "kimi",
     }),
   });
 

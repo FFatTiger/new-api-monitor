@@ -5,8 +5,6 @@ export interface AuthFile {
   provider: string;
   runtimeOnly: boolean;
   projectId: string | null;
-  idToken: string | Record<string, unknown> | null;
-  account: string | null;
   statusMessage?: string | null;
   disabled?: boolean;
   unavailable?: boolean;

@@ -3,24 +3,20 @@ import type { AuthFile } from "@/types/auth";
 import { apiFetch } from "@/lib/quota/api-client";
 import {
   buildClaudeQuotaWindows,
-  CLAUDE_PROFILE_URL,
-  CLAUDE_REQUEST_HEADERS,
-  CLAUDE_USAGE_URL,
   getApiCallErrorMessage,
   normalizeApiCallEnvelope,
   parseJsonMaybe,
   resolveClaudePlanType,
 } from "@/lib/quota/upstream";
 
-async function requestClaudeEndpoint(authIndex: string, url: string) {
+async function requestClaudeEndpoint(authIndex: string, action: "claude-usage" | "claude-profile") {
   const apiResponse = await apiFetch("/quota", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       authIndex,
-      method: "GET",
-      url,
-      header: { ...CLAUDE_REQUEST_HEADERS },
+      provider: "claude",
+      action,
     }),
   });
 
@@ -34,8 +30,8 @@ export const fetchClaudeQuota = async (file: AuthFile) => {
   }
 
   const [usageResult, profileResult] = await Promise.allSettled([
-    requestClaudeEndpoint(authIndex, CLAUDE_USAGE_URL),
-    requestClaudeEndpoint(authIndex, CLAUDE_PROFILE_URL),
+    requestClaudeEndpoint(authIndex, "claude-usage"),
+    requestClaudeEndpoint(authIndex, "claude-profile"),
   ]);
 
   if (usageResult.status === "rejected") {
