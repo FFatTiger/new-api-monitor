@@ -47,12 +47,12 @@ export function ProgressBar({ percent, colorClass = "bg-blue-400/80", label, val
 
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[0.72rem] text-[var(--foreground-soft)]">{label}</span>
-        <div className="flex items-center gap-1.5 text-[0.72rem]">
-          <span className="ds-mono font-medium text-[var(--foreground)]">{valueLabel || `${Math.round(percent)}%`}</span>
+      <div className="grid grid-cols-[minmax(0,1fr)_3rem_4.25rem] items-center gap-1.5">
+        <span className="min-w-0 truncate text-[0.72rem] text-[var(--foreground-soft)]">{label}</span>
+        <span className="ds-mono text-right text-[0.72rem] font-medium text-[var(--foreground)]">{valueLabel || `${Math.round(percent)}%`}</span>
+        <div className="min-w-0 text-right text-[0.72rem]">
           {countdown ? (
-            <span className="ds-mono text-[var(--foreground-faint)]" title={tooltip}>
+            <span className="ds-mono whitespace-nowrap text-[var(--foreground-faint)]" title={tooltip}>
               · {countdown}
             </span>
           ) : null}
