@@ -8,6 +8,7 @@ import type { ProviderFilter, ProviderType, QuotaState } from "@/types/quota";
 import { QuotaContent } from "@/components/quota/quota-content";
 import { ProviderIcon } from "@/components/quota/provider-icon";
 import { QuotaIcons } from "@/components/quota/quota-icons";
+import { getWeeklyQuotaRingData, type WeeklyQuotaRingData } from "@/lib/quota/card-ring";
 import { getCodexPlanLabel } from "@/lib/quota/upstream";
 
 function getCodexPlanBadge(data: Record<string, unknown> | undefined): string | null {
@@ -34,6 +35,41 @@ type ProviderCardProps = {
   selectedProvider: ProviderFilter;
 };
 
+const ringToneClass: Record<WeeklyQuotaRingData["tone"], string> = {
+  emerald: "text-emerald-500",
+  amber: "text-amber-500",
+  red: "text-red-500",
+  muted: "text-[var(--foreground-faint)]",
+};
+
+function WeeklyQuotaRing({ ring }: { ring: WeeklyQuotaRingData }) {
+  const radius = 13;
+  const circumference = 2 * Math.PI * radius;
+  const progress = ring.percent ?? 0;
+  const dashOffset = circumference * (1 - progress / 100);
+
+  return (
+    <div className={`relative grid h-8 w-8 place-items-center ${ringToneClass[ring.tone]}`} aria-label={`${ring.label} ${ring.valueLabel}`} title={`${ring.label} ${ring.valueLabel}`}>
+      <svg className="h-8 w-8 -rotate-90" viewBox="0 0 32 32" aria-hidden="true">
+        <circle cx="16" cy="16" r={radius} fill="none" stroke="var(--surface-ring-soft)" strokeWidth="3" />
+        <circle
+          cx="16"
+          cy="16"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="3"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          className="transition-[stroke-dashoffset] duration-500 ease-out"
+        />
+      </svg>
+      <span className="ds-mono absolute text-[0.52rem] font-semibold leading-none text-[var(--foreground)]">{ring.valueLabel}</span>
+    </div>
+  );
+}
+
 export function ProviderCard({ file, provider, quota, selectedProvider }: ProviderCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +93,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
   const claudePlan = getClaudePlanBadge(quota.data as Record<string, unknown> | undefined);
   const isPremiumCodexPlan = provider === "codex" && (codexPlan === "Pro 5x" || codexPlan === "Pro 20x");
   const isLimitReached = quota.data?.rate_limit?.limit_reached || quota.data?.rateLimit?.limit_reached;
+  const weeklyQuotaRing = getWeeklyQuotaRingData(provider, quota.data);
 
   return (
     <article className={["ds-card-muted ds-card-interactive flex h-full flex-col p-4", isPremiumCodexPlan ? "ds-card-premium-tier" : ""].filter(Boolean).join(" ")}>
@@ -84,7 +121,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
         <div className="mt-0.5 shrink-0">
           {quota.loading ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--surface-ring-soft)] border-t-[var(--foreground)]" /> : null}
           {!quota.loading && quota.error ? <QuotaIcons.Alert className="h-4 w-4 text-red-500" /> : null}
-          {!quota.loading && !quota.error && quota.data ? <QuotaIcons.Check className="h-4 w-4 text-emerald-500" /> : null}
+          {!quota.loading && !quota.error && quota.data ? <WeeklyQuotaRing ring={weeklyQuotaRing} /> : null}
         </div>
       </div>
 

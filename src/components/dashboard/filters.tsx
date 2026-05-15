@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 
+import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import type { DashboardFilters, FilterOption, FilterPreset } from "@/lib/queries/dashboard";
 
 interface DashboardHeaderControlsProps {
@@ -36,6 +37,9 @@ export function DashboardHeaderControls({
   const [quickPreset, setQuickPreset] = useState<FilterPreset>(filters.preset);
   const [customStartInput, setCustomStartInput] = useState(filters.startInput);
   const [customEndInput, setCustomEndInput] = useState(filters.endInput);
+  const filterKey = JSON.stringify(filters);
+  const [refreshingFromKey, setRefreshingFromKey] = useState<string | null>(null);
+  const isRefreshing = refreshingFromKey === filterKey;
 
   const closeDialog = useCallback(() => {
     setDialogOpen(false);
@@ -77,8 +81,14 @@ export function DashboardHeaderControls({
 
   return (
     <>
+      {isRefreshing ? (
+        <div className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--background)]/88 backdrop-blur-[2px]">
+          <DashboardSkeleton />
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-2">
-        <form method="get" className="flex items-center gap-2">
+        <form method="get" className="flex items-center gap-2" onSubmit={() => setRefreshingFromKey(filterKey)}>
           <label className="sr-only" htmlFor="dashboard-quick-preset">
             时间范围
           </label>
@@ -130,7 +140,7 @@ export function DashboardHeaderControls({
               </button>
             </div>
 
-            <form method="get" className="grid gap-3 sm:grid-cols-2">
+            <form method="get" className="grid gap-3 sm:grid-cols-2" onSubmit={() => setRefreshingFromKey(filterKey)}>
               <label className={labelClass}>
                 <span>时间范围</span>
                 <select
@@ -229,7 +239,7 @@ export function DashboardHeaderControls({
                 <button type="submit" className="ds-button-primary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
                   应用
                 </button>
-                <Link href="/" className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
+                <Link href="/" onClick={() => setRefreshingFromKey(filterKey)} className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
                   清空
                 </Link>
               </div>
