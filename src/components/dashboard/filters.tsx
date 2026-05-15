@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 
-import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { announceDashboardRefresh } from "@/components/dashboard/dashboard-refresh-boundary";
 import type { DashboardFilters, FilterOption, FilterPreset } from "@/lib/queries/dashboard";
 
 interface DashboardHeaderControlsProps {
@@ -37,9 +37,6 @@ export function DashboardHeaderControls({
   const [quickPreset, setQuickPreset] = useState<FilterPreset>(filters.preset);
   const [customStartInput, setCustomStartInput] = useState(filters.startInput);
   const [customEndInput, setCustomEndInput] = useState(filters.endInput);
-  const filterKey = JSON.stringify(filters);
-  const [refreshingFromKey, setRefreshingFromKey] = useState<string | null>(null);
-  const isRefreshing = refreshingFromKey === filterKey;
 
   const closeDialog = useCallback(() => {
     setDialogOpen(false);
@@ -81,16 +78,8 @@ export function DashboardHeaderControls({
 
   return (
     <>
-      {isRefreshing ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-0 top-[17rem] z-40 overflow-y-auto bg-[var(--background)]/72 px-4 pb-6 pt-2 sm:top-[14rem] sm:px-6 sm:pb-8 lg:px-8">
-          <div className="mx-auto w-full max-w-[1240px]">
-            <DashboardContentSkeleton />
-          </div>
-        </div>
-      ) : null}
-
       <div className="flex items-center gap-2">
-        <form method="get" className="flex items-center gap-2" onSubmit={() => setRefreshingFromKey(filterKey)}>
+        <form method="get" className="flex items-center gap-2" onSubmit={announceDashboardRefresh}>
           <label className="sr-only" htmlFor="dashboard-quick-preset">
             时间范围
           </label>
@@ -142,7 +131,7 @@ export function DashboardHeaderControls({
               </button>
             </div>
 
-            <form method="get" className="grid gap-3 sm:grid-cols-2" onSubmit={() => setRefreshingFromKey(filterKey)}>
+            <form method="get" className="grid gap-3 sm:grid-cols-2" onSubmit={announceDashboardRefresh}>
               <label className={labelClass}>
                 <span>时间范围</span>
                 <select
@@ -241,7 +230,7 @@ export function DashboardHeaderControls({
                 <button type="submit" className="ds-button-primary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
                   应用
                 </button>
-                <Link href="/" onClick={() => setRefreshingFromKey(filterKey)} className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
+                <Link href="/" onClick={announceDashboardRefresh} className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium sm:min-w-[96px]">
                   清空
                 </Link>
               </div>

@@ -1,5 +1,7 @@
 import { AppHeader } from "@/components/navigation/app-header";
 import { DashboardHeaderControls } from "@/components/dashboard/filters";
+import { DashboardRefreshBoundary } from "@/components/dashboard/dashboard-refresh-boundary";
+import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import { StabilitySection } from "@/components/dashboard/stability-section";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
 import { TokenRankingTable } from "@/components/dashboard/token-ranking-table";
@@ -31,18 +33,20 @@ export default async function Home({ searchParams }: PageProps) {
         subtitle="实时查看调用质量、趋势与配额状态。"
       />
 
-      <SummaryCards summary={data.summary} stabilitySummary={data.stabilitySummary} />
+      <DashboardRefreshBoundary fallback={<DashboardContentSkeleton />}>
+        <SummaryCards summary={data.summary} stabilitySummary={data.stabilitySummary} />
 
-      <TokenRankingTable
-        tokenRows={data.tokenRankings}
-        userRows={data.userRankings}
-        modelRows={data.modelRankings}
-        channelRows={data.channelRankings}
-      />
+        <TokenRankingTable
+          tokenRows={data.tokenRankings}
+          userRows={data.userRankings}
+          modelRows={data.modelRankings}
+          channelRows={data.channelRankings}
+        />
 
-      <StabilitySection modelRows={data.modelStability} channelRows={data.channelStability} />
+        <StabilitySection modelRows={data.modelStability} channelRows={data.channelStability} />
 
-      <UsageTrendChart data={data.trend} granularity={data.filters.granularity} />
+        <UsageTrendChart data={data.trend} granularity={data.filters.granularity} />
+      </DashboardRefreshBoundary>
     </main>
   );
 }
