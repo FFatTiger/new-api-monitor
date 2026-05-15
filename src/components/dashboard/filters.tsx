@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 
-import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { DashboardContentSkeleton } from "@/components/dashboard/dashboard-skeleton";
 import type { DashboardFilters, FilterOption, FilterPreset } from "@/lib/queries/dashboard";
 
 interface DashboardHeaderControlsProps {
@@ -82,8 +82,10 @@ export function DashboardHeaderControls({
   return (
     <>
       {isRefreshing ? (
-        <div className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--background)]/88 backdrop-blur-[2px]">
-          <DashboardSkeleton />
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 top-[17rem] z-40 overflow-y-auto bg-[var(--background)]/72 px-4 pb-6 pt-2 sm:top-[14rem] sm:px-6 sm:pb-8 lg:px-8">
+          <div className="mx-auto w-full max-w-[1240px]">
+            <DashboardContentSkeleton />
+          </div>
         </div>
       ) : null}
 
