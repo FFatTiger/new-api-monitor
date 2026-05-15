@@ -18,7 +18,7 @@ function SkeletonBlock({ className = "" }: { className?: string }) {
   return <div className={`ds-skeleton rounded-full ${className}`} />;
 }
 
-function SummarySkeleton() {
+export function SummarySkeleton() {
   return (
     <section className="ds-panel px-4 py-4 sm:px-5 sm:py-5">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -40,7 +40,7 @@ function SummarySkeleton() {
   );
 }
 
-function TableSkeleton({ kind }: { kind: "ranking" | "stability" }) {
+export function TableSkeleton({ kind }: { kind: "ranking" | "stability" }) {
   const tabs = kind === "ranking" ? ["密钥排行", "用户排行", "模型排行", "渠道排行"] : ["模型稳定性", "渠道稳定性"];
   const headers = kind === "ranking" ? rankingHeaders : stabilityHeaders;
   const kicker = kind === "ranking" ? "榜首" : "稳定性";
@@ -128,7 +128,7 @@ function TableSkeleton({ kind }: { kind: "ranking" | "stability" }) {
   );
 }
 
-function TrendSkeleton() {
+export function TrendSkeleton() {
   return (
     <section className="ds-panel px-4 py-4 sm:px-5 sm:py-5">
       <div className="ds-divider mb-4 flex flex-wrap items-end justify-between gap-3 pb-4">
