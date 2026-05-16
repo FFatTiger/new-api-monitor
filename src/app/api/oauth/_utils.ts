@@ -1,20 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-import { hasValidOAuthAccessKey, OAUTH_ACCESS_HEADER } from "@/lib/oauth/backend";
+import { hasOAuthBackendCredentials } from "@/lib/oauth/backend";
 
 export const noStoreHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate" } as const;
 
 export type OAuthRouteConfig = {
   apiBaseUrl: string;
   apiManagementKey: string;
-  oauthAccessKey: string;
 };
 
 export function getOAuthRouteConfig(): OAuthRouteConfig {
   return {
     apiBaseUrl: (process.env.API_BASE_URL || "").replace(/\/+$/, ""),
     apiManagementKey: process.env.API_MANAGEMENT_KEY || "",
-    oauthAccessKey: process.env.OAUTH_ACCESS_KEY || process.env.API_MANAGEMENT_KEY || "",
   };
 }
 
@@ -22,19 +20,11 @@ export function jsonResponse(payload: unknown, status = 200) {
   return NextResponse.json(payload, { status, headers: noStoreHeaders });
 }
 
-export function validateOAuthRouteRequest(request: NextRequest): NextResponse | null {
-  const { apiBaseUrl, apiManagementKey, oauthAccessKey } = getOAuthRouteConfig();
+export function validateOAuthRouteRequest(): NextResponse | null {
+  const { apiBaseUrl, apiManagementKey } = getOAuthRouteConfig();
 
-  if (!apiBaseUrl || !apiManagementKey) {
+  if (!hasOAuthBackendCredentials(apiBaseUrl, apiManagementKey)) {
     return jsonResponse({ error: "Server configuration missing" }, 500);
-  }
-
-  if (!oauthAccessKey) {
-    return jsonResponse({ error: "OAuth access key missing" }, 500);
-  }
-
-  if (!hasValidOAuthAccessKey(request.headers.get(OAUTH_ACCESS_HEADER), oauthAccessKey)) {
-    return jsonResponse({ error: "Unauthorized" }, 401);
   }
 
   return null;

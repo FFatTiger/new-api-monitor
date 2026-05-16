@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function POST(request: NextRequest) {
-  const authError = validateOAuthRouteRequest(request);
+  const authError = validateOAuthRouteRequest();
   if (authError) return authError;
 
   try {

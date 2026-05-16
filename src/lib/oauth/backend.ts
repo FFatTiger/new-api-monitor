@@ -1,8 +1,6 @@
 export type OAuthProvider = "codex" | "anthropic" | "antigravity" | "gemini-cli" | "kimi" | "xai";
 export type CallbackBackendProvider = "codex" | "anthropic" | "antigravity" | "gemini" | "xai";
 
-export const OAUTH_ACCESS_HEADER = "x-oauth-access-key";
-
 const providerAliases: Record<string, OAuthProvider> = {
   claude: "anthropic",
   anthropic: "anthropic",
@@ -94,9 +92,6 @@ export function getCallbackBackendProvider(provider: unknown): CallbackBackendPr
   return backendProvider;
 }
 
-export function hasValidOAuthAccessKey(suppliedKey: unknown, configuredKey: unknown): boolean {
-  if (typeof suppliedKey !== "string" || typeof configuredKey !== "string") return false;
-  const supplied = suppliedKey.trim();
-  const configured = configuredKey.trim();
-  return Boolean(supplied && configured && supplied === configured);
+export function hasOAuthBackendCredentials(apiBaseUrl: unknown, apiManagementKey: unknown): boolean {
+  return typeof apiBaseUrl === "string" && apiBaseUrl.trim() !== "" && typeof apiManagementKey === "string" && apiManagementKey.trim() !== "";
 }

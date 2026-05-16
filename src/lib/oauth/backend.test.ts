@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildOAuthStartBackendRequest,
   getCallbackBackendProvider,
-  hasValidOAuthAccessKey,
+  hasOAuthBackendCredentials,
   isCallbackSupportedProvider,
   isOAuthProvider,
 } from "./backend.ts";
@@ -38,9 +38,9 @@ describe("oauth backend compatibility", () => {
     assert.equal(isCallbackSupportedProvider("kimi"), false);
   });
 
-  it("validates the dedicated OAuth page key", () => {
-    assert.equal(hasValidOAuthAccessKey("secret", "secret"), true);
-    assert.equal(hasValidOAuthAccessKey("wrong", "secret"), false);
-    assert.equal(hasValidOAuthAccessKey("secret", ""), false);
+  it("requires only server-side backend credentials for OAuth proxy routes", () => {
+    assert.equal(hasOAuthBackendCredentials("https://api.example.test", "management-key"), true);
+    assert.equal(hasOAuthBackendCredentials("", "management-key"), false);
+    assert.equal(hasOAuthBackendCredentials("https://api.example.test", ""), false);
   });
 });

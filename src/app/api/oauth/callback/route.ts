@@ -20,7 +20,7 @@ function stringValue(value: unknown) {
 }
 
 export async function POST(request: NextRequest) {
-  const authError = validateOAuthRouteRequest(request);
+  const authError = validateOAuthRouteRequest();
   if (authError) return authError;
 
   try {

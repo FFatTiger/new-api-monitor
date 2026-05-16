@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AppHeader } from "@/components/navigation/app-header";
 import { QuotaIcons } from "@/components/quota/quota-icons";
-import { OAUTH_ACCESS_HEADER, type OAuthProvider } from "@/lib/oauth/backend";
+import type { OAuthProvider } from "@/lib/oauth/backend";
 import { clearQuotaCache } from "@/lib/quota/cache";
 
 type ProviderState = {
@@ -50,8 +50,6 @@ type ProviderConfig = {
   callback: boolean;
   projectId?: boolean;
 };
-
-const accessStorageKey = "new-api-monitor-oauth-access-key";
 
 const providers: ProviderConfig[] = [
   {
@@ -158,11 +156,6 @@ const Icons = {
   ),
 };
 
-function getInitialAccessKey() {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(accessStorageKey) || "";
-}
-
 function OAuthNotification({ notification }: { notification: NotificationState | null }) {
   if (!notification) return null;
 
@@ -205,7 +198,6 @@ function StatusPill({ state }: { state: ProviderState }) {
 }
 
 export function OAuthPageClient() {
-  const [accessKey, setAccessKey] = useState(getInitialAccessKey);
   const [states, setStates] = useState<Record<string, ProviderState>>({});
   const [notification, setNotification] = useState<NotificationState | null>(null);
   const [vertexState, setVertexState] = useState<VertexImportState>({ fileName: "", location: "", loading: false });
@@ -231,25 +223,6 @@ export function OAuthPageClient() {
     notificationTimer.current = setTimeout(() => setNotification(null), 3200);
   }
 
-  function handleAccessKeyChange(nextValue: string) {
-    setAccessKey(nextValue);
-    try {
-      window.localStorage.setItem(accessStorageKey, nextValue);
-    } catch {}
-  }
-
-  function authHeaders(json = true): HeadersInit | null {
-    const key = accessKey.trim();
-    if (!key) {
-      showNotification("请先填写 OAuth 操作密钥", "warning");
-      return null;
-    }
-
-    return json
-      ? { [OAUTH_ACCESS_HEADER]: key, "Content-Type": "application/json" }
-      : { [OAUTH_ACCESS_HEADER]: key };
-  }
-
   function updateProviderState(provider: OAuthProvider, next: Partial<ProviderState>) {
     setStates((previous) => ({
       ...previous,
@@ -273,11 +246,7 @@ export function OAuthPageClient() {
 
     const timer = setInterval(async () => {
       try {
-        const headers = authHeaders(false);
-        if (!headers) return;
-
         const response = await fetch(`/api/oauth/status?state=${encodeURIComponent(stateParam)}`, {
-          headers,
           cache: "no-store",
         });
         const data = await parseResponse(response);
@@ -310,9 +279,6 @@ export function OAuthPageClient() {
   }
 
   async function startAuth(provider: OAuthProvider) {
-    const headers = authHeaders();
-    if (!headers) return;
-
     const projectId = provider === "gemini-cli" ? states[provider]?.projectId?.trim() : undefined;
     updateProviderState(provider, {
       status: "waiting",
@@ -327,7 +293,7 @@ export function OAuthPageClient() {
     try {
       const response = await fetch("/api/oauth/start", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, projectId: projectId || undefined }),
       });
       const data = await parseResponse(response);
@@ -365,9 +331,6 @@ export function OAuthPageClient() {
   }
 
   async function submitCallback(provider: OAuthProvider) {
-    const headers = authHeaders();
-    if (!headers) return;
-
     const state = states[provider] || {};
     const redirectUrl = state.callbackUrl?.trim() || "";
     const code = state.callbackCode?.trim() || "";
@@ -383,7 +346,7 @@ export function OAuthPageClient() {
     try {
       const response = await fetch("/api/oauth/callback", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ provider, redirectUrl, code, state: callbackState }),
       });
       const data = await parseResponse(response);
@@ -415,9 +378,6 @@ export function OAuthPageClient() {
   }
 
   async function handleVertexImport() {
-    const headers = authHeaders(false);
-    if (!headers) return;
-
     if (!vertexState.file) {
       showNotification("请先选择服务账号 JSON", "warning");
       return;
@@ -434,7 +394,6 @@ export function OAuthPageClient() {
 
       const response = await fetch("/api/vertex/import", {
         method: "POST",
-        headers,
         body: formData,
       });
       const data = await parseResponse(response);
@@ -463,23 +422,9 @@ export function OAuthPageClient() {
   }
 
   const controls = (
-    <div className="flex flex-wrap items-center gap-2">
-      <label className="sr-only" htmlFor="oauth-access-key">
-        OAuth 操作密钥
-      </label>
-      <input
-        id="oauth-access-key"
-        type="password"
-        value={accessKey}
-        onChange={(event) => handleAccessKeyChange(event.target.value)}
-        placeholder="OAuth 操作密钥"
-        className="ds-compact-control h-10 w-[180px] px-3 text-[0.78rem]"
-        autoComplete="current-password"
-      />
-      <a href="/quota" className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium">
-        返回 Quota
-      </a>
-    </div>
+    <a href="/quota" className="ds-button-secondary h-10 px-4 text-[0.8rem] font-medium">
+      返回 Quota
+    </a>
   );
 
   return (
@@ -492,7 +437,7 @@ export function OAuthPageClient() {
           <p className="ds-kicker">Protected Mutation</p>
           <h2 className="text-[1.2rem] font-semibold tracking-[-0.04em] text-[var(--foreground)]">OAuth 登录会写入后端认证文件</h2>
           <p className="max-w-3xl text-[0.86rem] leading-6 text-[var(--foreground-soft)]">
-            页面请求会携带你输入的操作密钥，由服务端代理到管理后端。授权成功后会清理本地 Quota 缓存，刷新账号页即可看到新凭据。
+            页面通过服务端 API 路由代理到管理后端，服务端使用已配置的 API 管理密钥转发请求。授权成功后会清理本地 Quota 缓存，刷新账号页即可看到新凭据。
           </p>
         </div>
         <div className="rounded-[18px] bg-[var(--background-muted)] p-4 shadow-[0_0_0_1px_var(--surface-ring-soft)]">

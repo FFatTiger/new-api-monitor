@@ -24,7 +24,6 @@ cp .env.example .env.local
 DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE"
 API_BASE_URL="https://your-api-management-host"
 API_MANAGEMENT_KEY="your-server-only-management-key"
-OAUTH_ACCESS_KEY="optional-dedicated-oauth-operation-key"
 ```
 
 ## Docker
@@ -48,7 +47,6 @@ docker run --rm -p 31891:31891 \
   -e DATABASE_URL="postgresql://USERNAME:PASSWORD@HOST:5432/DATABASE" \
   -e API_BASE_URL="https://your-api-management-host" \
   -e API_MANAGEMENT_KEY="your-server-only-management-key" \
-  -e OAUTH_ACCESS_KEY="optional-dedicated-oauth-operation-key" \
   fffattiger/new-api-monitor:latest
 ```
 
@@ -64,7 +62,6 @@ docker run --rm -p 31891:31891 \
 - `NEW_API_MONITOR_DATABASE_URL`
 - `NEW_API_MONITOR_API_BASE_URL`
 - `NEW_API_MONITOR_API_MANAGEMENT_KEY`
-- `NEW_API_MONITOR_OAUTH_ACCESS_KEY`，可选；为空时 OAuth 操作密钥使用 `API_MANAGEMENT_KEY`
 - `NEW_API_MONITOR_PORT`，默认 `31891`
 
 如果和 `new-api` 的 `postgres` 在同一个 Docker network / stack，可使用类似：
@@ -96,4 +93,4 @@ GitHub repository secrets：
 - 不要提交 `.env.local`
 - 不要把真实数据库连接串写进仓库文件
 - 当前项目默认没有登录保护，更适合放内网或放在反向代理认证后面
-- `/oauth` 会写入后端认证文件，页面操作需要输入 `OAUTH_ACCESS_KEY`；未设置专用密钥时使用 `API_MANAGEMENT_KEY`
+- `/oauth` 会写入后端认证文件，页面通过服务端 API 路由使用 `API_MANAGEMENT_KEY` 转发管理请求
