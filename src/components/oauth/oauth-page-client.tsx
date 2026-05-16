@@ -432,18 +432,12 @@ export function OAuthPageClient() {
       <OAuthNotification notification={notification} />
       <AppHeader controls={controls} subtitle="提交 OAuth 授权、远程回调与服务账号凭据导入。" />
 
-      <section className="ds-panel grid gap-4 p-4 sm:p-5 lg:grid-cols-[1.2fr_0.8fr]">
+      <section className="ds-panel p-4 sm:p-5">
         <div className="space-y-2">
           <p className="ds-kicker">Protected Mutation</p>
           <h2 className="text-[1.2rem] font-semibold tracking-[-0.04em] text-[var(--foreground)]">OAuth 登录会写入后端认证文件</h2>
           <p className="max-w-3xl text-[0.86rem] leading-6 text-[var(--foreground-soft)]">
             页面通过服务端 API 路由代理到管理后端，服务端使用已配置的 API 管理密钥转发请求。授权成功后会清理本地 Quota 缓存，刷新账号页即可看到新凭据。
-          </p>
-        </div>
-        <div className="rounded-[18px] bg-[var(--background-muted)] p-4 shadow-[0_0_0_1px_var(--surface-ring-soft)]">
-          <p className="text-[0.78rem] font-medium text-[var(--foreground)]">远程回调用法</p>
-          <p className="mt-2 text-[0.76rem] leading-5 text-[var(--foreground-soft)]">
-            授权站点跳转到 localhost 回调地址时，把浏览器地址栏里的完整 URL 粘贴到对应卡片的回调框，然后提交。
           </p>
         </div>
       </section>
