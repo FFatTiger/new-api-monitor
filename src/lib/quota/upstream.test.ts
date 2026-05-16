@@ -14,6 +14,11 @@ describe("upstream quota compatibility", () => {
     assert.equal(resolveProviderType({ type: "claude" }), "claude");
   });
 
+  it("recognizes xAI Grok auth files from the upstream provider list", () => {
+    assert.equal(resolveProviderType({ type: "xai" }), "xai");
+    assert.equal(resolveProviderType({ type: "grok" }), "xai");
+  });
+
   it("normalizes Codex plan labels including ProLite variants", () => {
     assert.equal(normalizeCodexPlanType("pro_lite"), "prolite");
     assert.equal(normalizeCodexPlanType("pro-lite"), "prolite");

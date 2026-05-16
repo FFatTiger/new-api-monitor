@@ -24,5 +24,9 @@ export function getQuotaFetchSkipReason(file: QuotaFetchFile): string | null {
     return "Runtime-only (Skipped)";
   }
 
+  if (provider === "xai" || provider === "x-ai" || provider === "x.ai" || provider === "grok") {
+    return "Grok quota unavailable (Skipped)";
+  }
+
   return null;
 }

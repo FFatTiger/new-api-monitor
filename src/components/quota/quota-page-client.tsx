@@ -19,6 +19,7 @@ const providerTabs: Array<{ key: ProviderFilter; label: string }> = [
   { key: "codex", label: "Codex" },
   { key: "gemini-cli", label: "Gemini CLI" },
   { key: "kimi", label: "Kimi" },
+  { key: "xai", label: "Grok" },
 ];
 
 type SortOption =
@@ -153,11 +154,12 @@ export function QuotaPageClient() {
       codex: 0,
       "gemini-cli": 0,
       kimi: 0,
+      xai: 0,
     };
 
     authFiles.forEach((file) => {
       const provider = getProviderType(file);
-      if (provider === "antigravity" || provider === "claude" || provider === "codex" || provider === "gemini-cli" || provider === "kimi") {
+      if (provider === "antigravity" || provider === "claude" || provider === "codex" || provider === "gemini-cli" || provider === "kimi" || provider === "xai") {
         counts[provider] += 1;
       }
     });
@@ -168,7 +170,7 @@ export function QuotaPageClient() {
   const sortedFiles = useMemo(() => {
     const filtered = selectedProvider === "all" ? authFiles : authFiles.filter((file) => getProviderType(file) === selectedProvider);
 
-    if (selectedProvider === "all" || selectedProvider === "claude" || selectedProvider === "gemini-cli" || selectedProvider === "kimi" || sortOption === "default") {
+    if (selectedProvider === "all" || selectedProvider === "claude" || selectedProvider === "gemini-cli" || selectedProvider === "kimi" || selectedProvider === "xai" || sortOption === "default") {
       return sortQuotaFiles(filtered, quotas, selectedProvider);
     }
 

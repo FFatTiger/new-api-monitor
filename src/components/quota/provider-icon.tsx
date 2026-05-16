@@ -21,6 +21,8 @@ export function ProviderIcon({ type }: { type: ProviderType }) {
       return <QuotaIcons.Cloud className="h-4 w-4 text-blue-500" />;
     case "kimi":
       return <KimiIcon className="h-4 w-4 text-blue-600" />;
+    case "xai":
+      return <QuotaIcons.Spark className="h-4 w-4 text-fuchsia-500" />;
     default:
       return <QuotaIcons.Server className="h-4 w-4 text-[var(--foreground-faint)]" />;
   }

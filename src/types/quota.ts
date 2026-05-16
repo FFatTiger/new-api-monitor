@@ -1,6 +1,6 @@
 import type { AuthFile } from "@/types/auth";
 
-export type ProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unknown";
+export type ProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "xai" | "unknown";
 export type ProviderFilter = "all" | Exclude<ProviderType, "unknown">;
 
 export interface QuotaState {

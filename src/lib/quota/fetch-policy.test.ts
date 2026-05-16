@@ -31,4 +31,15 @@ describe("quota fetch policy", () => {
       "Runtime-only (Skipped)",
     );
   });
+
+  it("skips xAI Grok quota until the backend exposes a quota endpoint", () => {
+    assert.equal(
+      getQuotaFetchSkipReason({
+        ...baseAuthFile,
+        type: "xai",
+        provider: "xai",
+      }),
+      "Grok quota unavailable (Skipped)",
+    );
+  });
 });

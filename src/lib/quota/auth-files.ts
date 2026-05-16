@@ -77,7 +77,7 @@ function extractAndMaskAccountName(name: string): string {
   if (!name) return name;
 
   const base = name.replace(/\.json$/i, "");
-  const prefixes = ["antigravity-", "claude-", "codex-", "gemini-cli-", "kimi-"];
+  const prefixes = ["antigravity-", "claude-", "codex-", "gemini-cli-", "kimi-", "xai-", "grok-"];
   let remaining = base;
 
   for (const prefix of prefixes) {
