@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server";
 
+import { getVertexCredentialFileError } from "@/lib/oauth/backend";
+
 import { backendErrorResponse, getOAuthRouteConfig, jsonResponse, unknownErrorResponse, validateOAuthRouteRequest } from "../../oauth/_utils";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +20,9 @@ export async function POST(request: NextRequest) {
       return jsonResponse({ error: "File is required" }, 400);
     }
 
-    if (!file.name.toLowerCase().endsWith(".json")) {
-      return jsonResponse({ error: "Only JSON files are allowed" }, 400);
+    const fileError = getVertexCredentialFileError(file);
+    if (fileError) {
+      return jsonResponse({ error: fileError }, 400);
     }
 
     const backendFormData = new FormData();

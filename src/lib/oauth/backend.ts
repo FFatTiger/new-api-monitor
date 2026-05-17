@@ -1,6 +1,8 @@
 export type OAuthProvider = "codex" | "anthropic" | "antigravity" | "gemini-cli" | "kimi" | "xai";
 export type CallbackBackendProvider = "codex" | "anthropic" | "antigravity" | "gemini" | "xai";
 
+const MAX_VERTEX_CREDENTIAL_FILE_SIZE = 256 * 1024;
+
 const providerAliases: Record<string, OAuthProvider> = {
   claude: "anthropic",
   anthropic: "anthropic",
@@ -94,4 +96,27 @@ export function getCallbackBackendProvider(provider: unknown): CallbackBackendPr
 
 export function hasOAuthBackendCredentials(apiBaseUrl: unknown, apiManagementKey: unknown): boolean {
   return typeof apiBaseUrl === "string" && apiBaseUrl.trim() !== "" && typeof apiManagementKey === "string" && apiManagementKey.trim() !== "";
+}
+
+export function getPublicBackendErrorMessage(_status: number, _bodyText = ""): string {
+  void _status;
+  void _bodyText;
+  return "Backend request failed";
+}
+
+export function getPublicUnexpectedErrorMessage(_error: unknown): string {
+  void _error;
+  return "Request failed";
+}
+
+export function getVertexCredentialFileError(file: { name?: unknown; size?: unknown }): string | null {
+  if (typeof file.name !== "string" || !file.name.toLowerCase().endsWith(".json")) {
+    return "Only JSON files are allowed";
+  }
+
+  if (typeof file.size !== "number" || !Number.isFinite(file.size) || file.size <= 0 || file.size > MAX_VERTEX_CREDENTIAL_FILE_SIZE) {
+    return "File is too large";
+  }
+
+  return null;
 }

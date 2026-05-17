@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   buildOAuthStartBackendRequest,
   getCallbackBackendProvider,
+  getPublicBackendErrorMessage,
+  getVertexCredentialFileError,
   hasOAuthBackendCredentials,
   isCallbackSupportedProvider,
   isOAuthProvider,
@@ -42,5 +44,15 @@ describe("oauth backend compatibility", () => {
     assert.equal(hasOAuthBackendCredentials("https://api.example.test", "management-key"), true);
     assert.equal(hasOAuthBackendCredentials("", "management-key"), false);
     assert.equal(hasOAuthBackendCredentials("https://api.example.test", ""), false);
+  });
+
+  it("keeps backend error details server-side", () => {
+    assert.equal(getPublicBackendErrorMessage(500, "stack with API_MANAGEMENT_KEY=secret"), "Backend request failed");
+  });
+
+  it("limits Vertex credential uploads to small JSON files", () => {
+    assert.equal(getVertexCredentialFileError({ name: "service-account.json", size: 16_384 }), null);
+    assert.equal(getVertexCredentialFileError({ name: "service-account.txt", size: 16_384 }), "Only JSON files are allowed");
+    assert.equal(getVertexCredentialFileError({ name: "service-account.json", size: 300_000 }), "File is too large");
   });
 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { hasOAuthBackendCredentials } from "@/lib/oauth/backend";
+import { getPublicBackendErrorMessage, getPublicUnexpectedErrorMessage, hasOAuthBackendCredentials } from "@/lib/oauth/backend";
 
 export const noStoreHeaders = { "Cache-Control": "no-store, no-cache, must-revalidate" } as const;
 
@@ -40,10 +40,11 @@ export function backendManagementHeaders() {
 
 export async function backendErrorResponse(response: Response) {
   const text = await response.text();
-  return jsonResponse({ error: `Backend error: ${response.status} ${text}` }, response.status);
+  console.error("OAuth backend request failed", response.status, text);
+  return jsonResponse({ error: getPublicBackendErrorMessage(response.status, text) }, response.status);
 }
 
 export function unknownErrorResponse(error: unknown) {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  return jsonResponse({ error: message }, 500);
+  console.error("OAuth route failed", error);
+  return jsonResponse({ error: getPublicUnexpectedErrorMessage(error) }, 500);
 }

@@ -432,15 +432,6 @@ export function OAuthPageClient() {
       <OAuthNotification notification={notification} />
       <AppHeader controls={controls} subtitle="提交 OAuth 授权、远程回调与服务账号凭据导入。" />
 
-      <section className="ds-panel p-4 sm:p-5">
-        <div className="space-y-2">
-          <p className="ds-kicker">Protected Mutation</p>
-          <h2 className="text-[1.2rem] font-semibold tracking-[-0.04em] text-[var(--foreground)]">OAuth 登录会写入后端认证文件</h2>
-          <p className="max-w-3xl text-[0.86rem] leading-6 text-[var(--foreground-soft)]">
-            页面通过服务端 API 路由代理到管理后端，服务端使用已配置的 API 管理密钥转发请求。授权成功后会清理本地 Quota 缓存，刷新账号页即可看到新凭据。
-          </p>
-        </div>
-      </section>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {providers.map((provider) => {
