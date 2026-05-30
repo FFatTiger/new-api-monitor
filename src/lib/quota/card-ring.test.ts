@@ -46,4 +46,49 @@ describe("weekly quota ring data", () => {
       tone: "muted",
     });
   });
+
+  it("shows the MiniMax current window when no weekly quota is returned", () => {
+    const data: QuotaData = {
+      windows: [{ id: "minimax-hour", label: "4小时额度", remainingPercent: 99.7, valueLabel: "99.7/100P" }],
+    };
+
+    assert.deepEqual(getWeeklyQuotaRingData("minimax", data), {
+      percent: 100,
+      label: "4小时额度",
+      valueLabel: "100%",
+      tone: "emerald",
+    });
+  });
+
+  it("prefers the MiniMax weekly window when available", () => {
+    const data: QuotaData = {
+      windows: [
+        { id: "minimax-hour", label: "4小时额度", remainingPercent: 75 },
+        { id: "minimax-week", label: "周额度", remainingPercent: 40 },
+      ],
+    };
+
+    assert.deepEqual(getWeeklyQuotaRingData("minimax", data), {
+      percent: 40,
+      label: "周额度",
+      valueLabel: "40%",
+      tone: "amber",
+    });
+  });
+
+  it("uses the Z.ai tokens limit as the top-right quota summary", () => {
+    const data: QuotaData = {
+      windows: [
+        { id: "time-limit", label: "Time", remainingPercent: 90 },
+        { id: "tokens-limit", label: "Tokens", remainingPercent: 24.7 },
+      ],
+    };
+
+    assert.deepEqual(getWeeklyQuotaRingData("zai", data), {
+      percent: 25,
+      label: "Tokens",
+      valueLabel: "25%",
+      tone: "amber",
+    });
+  });
 });

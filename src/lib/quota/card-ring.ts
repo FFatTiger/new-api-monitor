@@ -2,7 +2,7 @@ import type { ProviderType, QuotaData, RateLimitWindow } from "@/types/quota";
 
 export type WeeklyQuotaRingData = {
   percent: number | null;
-  label: "周额度";
+  label: string;
   valueLabel: string;
   tone: "emerald" | "amber" | "red" | "muted";
 };
@@ -48,19 +48,50 @@ function findWeeklyWindow(windows: RateLimitWindow[]) {
   });
 }
 
-export function getWeeklyQuotaRingData(type: ProviderType, data?: QuotaData): WeeklyQuotaRingData {
-  if (!data || (type !== "codex" && type !== "claude")) return emptyWeeklyRing;
+function findMiniMaxWindow(windows: RateLimitWindow[]) {
+  return (
+    findWeeklyWindow(windows) ||
+    windows.find((windowData) => {
+      const id = String(windowData.id || "").toLowerCase();
+      const label = String(windowData.label || "").toLowerCase();
+      return id.includes("hour") || label.includes("小时") || label.includes("hour");
+    }) ||
+    windows[0]
+  );
+}
 
-  const weeklyWindow = data.windows?.length
-    ? findWeeklyWindow(data.windows)
-    : data.rateLimit?.secondaryWindow ?? data.rate_limit?.secondary_window;
-  const percent = getRemainingPercent(weeklyWindow);
+function findZaiWindow(windows: RateLimitWindow[]) {
+  return (
+    windows.find((windowData) => String(windowData.id || "").toLowerCase() === "tokens-limit") ||
+    findWeeklyWindow(windows) ||
+    windows[0]
+  );
+}
+
+function getRingWindow(type: ProviderType, data: QuotaData) {
+  if (type === "codex" || type === "claude") {
+    return data.windows?.length
+      ? findWeeklyWindow(data.windows)
+      : data.rateLimit?.secondaryWindow ?? data.rate_limit?.secondary_window;
+  }
+
+  if (type === "minimax") return findMiniMaxWindow(data.windows || []);
+  if (type === "zai") return findZaiWindow(data.windows || []);
+
+  return null;
+}
+
+export function getWeeklyQuotaRingData(type: ProviderType, data?: QuotaData): WeeklyQuotaRingData {
+  if (!data || !["codex", "claude", "minimax", "zai"].includes(type)) return emptyWeeklyRing;
+
+  const ringWindow = getRingWindow(type, data);
+  const percent = getRemainingPercent(ringWindow);
 
   if (percent === null) return emptyWeeklyRing;
 
   return {
     percent,
-    label: "周额度",
+    label: type === "codex" || type === "claude" ? "周额度" : ringWindow?.label || "总额度",
     valueLabel: `${percent}%`,
     tone: getTone(percent),
   };
