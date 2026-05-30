@@ -102,13 +102,22 @@ async function fetchMiniMaxQuota() {
     try {
       const response = await fetch(endpoint.url, {
         headers: {
+          Accept: "application/json",
           Authorization: `Bearer ${MINIMAX_API_KEY}`,
         },
         cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
       });
 
       if (!response.ok) {
         lastStatus = response.status;
+        lastPayload = {
+          base_resp: {
+            status_code: response.status,
+            status_msg: `HTTP ${response.status}`,
+          },
+          endpointRegion: endpoint.region,
+        };
         console.error("Failed MiniMax quota request", endpoint.region, response.status);
         continue;
       }
@@ -126,6 +135,13 @@ async function fetchMiniMaxQuota() {
         return NextResponse.json(enrichedPayload, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
       }
     } catch (error: unknown) {
+      lastPayload = {
+        base_resp: {
+          status_code: -1,
+          status_msg: "request failed",
+        },
+        endpointRegion: endpoint.region,
+      };
       console.error("Failed MiniMax quota request", endpoint.region, error);
     }
   }

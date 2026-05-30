@@ -50,10 +50,10 @@ describe("MiniMax quota compatibility", () => {
     assert.equal(resolveMiniMaxPlanType(2000, "cn"), "ultra");
   });
 
-  it("uses both endpoints in auto mode and honors explicit region", () => {
+  it("tries the domestic endpoint first in auto mode and honors explicit region", () => {
     assert.deepEqual(
       getMiniMaxEndpointCandidates("auto").map((endpoint) => endpoint.region),
-      ["global", "cn"],
+      ["cn", "global"],
     );
     assert.deepEqual(
       getMiniMaxEndpointCandidates("cn").map((endpoint) => endpoint.url),

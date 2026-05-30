@@ -140,8 +140,8 @@ export function getMiniMaxEndpointCandidates(mode: MiniMaxEndpointMode = "auto",
   if (mode === "cn") return [{ region: "cn", url: MINIMAX_CN_USAGE_URL }];
   if (mode === "global") return [{ region: "global", url: MINIMAX_GLOBAL_USAGE_URL }];
   return [
-    { region: "global", url: MINIMAX_GLOBAL_USAGE_URL },
     { region: "cn", url: MINIMAX_CN_USAGE_URL },
+    { region: "global", url: MINIMAX_GLOBAL_USAGE_URL },
   ];
 }
 
