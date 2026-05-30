@@ -24,6 +24,10 @@ type MiniMaxRemain = {
   current_interval_usage_count?: unknown;
   remains_time?: unknown;
   end_time?: unknown;
+  current_weekly_total_count?: unknown;
+  current_weekly_usage_count?: unknown;
+  weekly_remains_time?: unknown;
+  weekly_end_time?: unknown;
 };
 
 const MINIMAX_REMAINS_PATH = "/v1/api/openplatform/coding_plan/remains";
@@ -75,38 +79,30 @@ function getMiniMaxRemains(payload: unknown, key: "model_remains" | "category_re
   return Array.isArray(remains) ? remains : [];
 }
 
-function getMiniMaxResetTime(item: MiniMaxRemain) {
-  const endTime = normalizeNumberValue(item.end_time);
+function getMiniMaxResetTime(item: MiniMaxRemain, window: "hour" | "week") {
+  const endTime = normalizeNumberValue(window === "hour" ? item.end_time : item.weekly_end_time);
   if (endTime !== null) return endTime;
 
-  const remainsTime = normalizeNumberValue(item.remains_time);
+  const remainsTime = normalizeNumberValue(window === "hour" ? item.remains_time : item.weekly_remains_time);
   return remainsTime === null ? undefined : Date.now() + remainsTime * 1000;
 }
 
-function toMiniMaxWindow(item: MiniMaxRemain, fallbackLabel: string): RateLimitWindow | null {
-  const totalPrompt = promptCount(item.current_interval_total_count);
-  const remainingPrompt = promptCount(item.current_interval_usage_count);
+function toMiniMaxWindow(item: MiniMaxRemain, label: string, window: "hour" | "week"): RateLimitWindow | null {
+  const totalPrompt = promptCount(window === "hour" ? item.current_interval_total_count : item.current_weekly_total_count);
+  const remainingPrompt = promptCount(window === "hour" ? item.current_interval_usage_count : item.current_weekly_usage_count);
   if (totalPrompt === null || remainingPrompt === null || totalPrompt <= 0) return null;
 
   const safeRemainingPrompt = Math.max(0, Math.min(totalPrompt, remainingPrompt));
   const usedPrompt = Math.max(0, totalPrompt - safeRemainingPrompt);
   const remainingPercent = clampPercent((safeRemainingPrompt / totalPrompt) * 100);
   const usedPercent = clampPercent((usedPrompt / totalPrompt) * 100);
-  const label =
-    normalizeStringValue(item.model_name) ||
-    normalizeStringValue(item.display_name) ||
-    normalizeStringValue(item.category) ||
-    fallbackLabel;
 
   return {
-    id: label
-      .toLowerCase()
-      .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
-      .replace(/^-+|-+$/g, ""),
+    id: `minimax-${window}`,
     label,
     usedPercent,
     remainingPercent,
-    resetTime: getMiniMaxResetTime(item),
+    resetTime: getMiniMaxResetTime(item, window),
     valueLabel: `${formatPrompt(safeRemainingPrompt)}/${formatPrompt(totalPrompt)}P`,
     totalPrompt,
     remainingPrompt: safeRemainingPrompt,
@@ -115,10 +111,14 @@ function toMiniMaxWindow(item: MiniMaxRemain, fallbackLabel: string): RateLimitW
 }
 
 export function normalizeMiniMaxRegion(value: unknown): MiniMaxEndpointMode {
-  const normalized = normalizeStringValue(value)?.toLowerCase();
+  const normalized = normalizeStringValue(value)?.split(/\s+/)[0]?.toLowerCase();
   if (["cn", "china", "domestic", "mainland"].includes(normalized || "")) return "cn";
   if (["global", "intl", "international", "overseas"].includes(normalized || "")) return "global";
   return "auto";
+}
+
+export function normalizeMiniMaxApiKey(value: unknown) {
+  return normalizeStringValue(value)?.split(/\s+/)[0] ?? "";
 }
 
 function inferMiniMaxRegionFromUrl(url: string): MiniMaxEndpointRegion {
@@ -160,13 +160,34 @@ export function resolveMiniMaxPlanType(promptLimit: number | null, region: MiniM
   return planByRegion[region][Math.round(promptLimit)] ?? null;
 }
 
+function findPrimaryMiniMaxRemain(payload: unknown): MiniMaxRemain | null {
+  const modelRemains = getMiniMaxRemains(payload, "model_remains");
+  const primaryModel = modelRemains.find((item) => {
+    const name = normalizeStringValue(item.model_name)?.toLowerCase() ?? "";
+    return name === "minimax-m*" || name.startsWith("minimax-m");
+  });
+  if (primaryModel) return primaryModel;
+
+  const categoryRemains = getMiniMaxRemains(payload, "category_remains");
+  const textCategory = categoryRemains.find((item) => {
+    const category = normalizeStringValue(item.category)?.toLowerCase();
+    const displayName = normalizeStringValue(item.display_name);
+    return category === "text_generation" || displayName === "文本生成";
+  });
+  if (textCategory) return textCategory;
+
+  return modelRemains.find((item) => normalizeNumberValue(item.current_interval_total_count)) ?? null;
+}
+
 export function buildMiniMaxQuotaData(payload: unknown, region: MiniMaxEndpointRegion): QuotaData {
-  const windows = [
-    ...getMiniMaxRemains(payload, "model_remains").map((item, index) => toMiniMaxWindow(item, `模型 #${index + 1}`)),
-    ...getMiniMaxRemains(payload, "category_remains").map((item, index) => toMiniMaxWindow(item, `类别 #${index + 1}`)),
-  ].filter((window): window is RateLimitWindow => Boolean(window));
-  const maxPromptLimit = windows.reduce((current, window) => Math.max(current, window.totalPrompt ?? 0), 0);
-  const planType = resolveMiniMaxPlanType(maxPromptLimit || null, region);
+  const primaryRemain = findPrimaryMiniMaxRemain(payload);
+  const windows = primaryRemain
+    ? [toMiniMaxWindow(primaryRemain, "4小时额度", "hour"), toMiniMaxWindow(primaryRemain, "周额度", "week")].filter(
+        (window): window is RateLimitWindow => Boolean(window),
+      )
+    : [];
+  const primaryPromptLimit = windows[0]?.totalPrompt ?? null;
+  const planType = resolveMiniMaxPlanType(primaryPromptLimit, region);
 
   return {
     ...(payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {}),

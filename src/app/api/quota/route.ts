@@ -5,6 +5,7 @@ import {
   getMiniMaxEndpointCandidates,
   getMiniMaxStatusCode,
   isMiniMaxAuthIndex,
+  normalizeMiniMaxApiKey,
   normalizeMiniMaxRegion,
 } from "@/lib/quota/minimax";
 import { buildQuotaApiCall, findRawAuthFile, type QuotaProxyRequest } from "@/lib/quota/server-proxy";
@@ -17,7 +18,7 @@ export const revalidate = 0;
 const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
 const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
 const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.ZAI_API_TOKEN || "";
-const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "";
+const MINIMAX_API_KEY = normalizeMiniMaxApiKey(process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "");
 const MINIMAX_API_REGION = process.env.MINIMAX_API_REGION || "auto";
 const MINIMAX_API_BASE_URL = process.env.MINIMAX_API_BASE_URL || "";
 
