@@ -1,6 +1,6 @@
 import type { AuthFile } from "@/types/auth";
 
-export type ProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "xai" | "unknown";
+export type ProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "minimax" | "xai" | "zai" | "unknown";
 export type ProviderFilter = "all" | Exclude<ProviderType, "unknown">;
 
 export interface QuotaState {
@@ -51,6 +51,10 @@ export interface RateLimitWindow {
   reset_time?: string | number;
   label?: string;
   id?: string;
+  valueLabel?: string;
+  totalPrompt?: number;
+  remainingPrompt?: number;
+  usedPrompt?: number;
 }
 
 export interface RateLimitData {
@@ -85,6 +89,7 @@ export interface QuotaData {
   tierLabel?: string | null;
   tierId?: string | null;
   creditBalance?: number | null;
+  endpointRegion?: string | null;
 }
 
 export interface CacheData {

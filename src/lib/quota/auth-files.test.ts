@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { sanitizeAuthFile } from "./auth-files.ts";
+import { buildMiniMaxAuthFile, buildZaiAuthFile, sanitizeAuthFile } from "./auth-files.ts";
 
 describe("auth file sanitization", () => {
   it("does not expose server-side token or account fields", () => {
@@ -21,5 +21,29 @@ describe("auth file sanitization", () => {
     assert.equal("account" in file, false);
     assert.equal(file.planType, "pro");
     assert.equal(file.displayName, "pe*son@ex******com");
+  });
+
+  it("builds a Z.ai auth file marker without exposing the configured api key", () => {
+    const file = buildZaiAuthFile("fake-zai-key");
+
+    assert.ok(file);
+    assert.equal(file.authIndex, "server-zai");
+    assert.equal(file.displayName, "Z.ai");
+    assert.equal(file.type, "zai");
+    assert.equal(file.provider, "zai");
+    assert.equal(JSON.stringify(file).includes("fake-zai-key"), false);
+    assert.equal(buildZaiAuthFile(""), null);
+  });
+
+  it("builds a MiniMax auth file marker without exposing the configured api key", () => {
+    const file = buildMiniMaxAuthFile("fake-minimax-key", "cn");
+
+    assert.ok(file);
+    assert.equal(file.authIndex, "server-minimax");
+    assert.equal(file.displayName, "MiniMax CN");
+    assert.equal(file.type, "minimax");
+    assert.equal(file.provider, "minimax");
+    assert.equal(JSON.stringify(file).includes("fake-minimax-key"), false);
+    assert.equal(buildMiniMaxAuthFile("", "global"), null);
   });
 });

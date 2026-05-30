@@ -6,6 +6,8 @@ import { fetchClaudeQuota } from "@/lib/quota/claude";
 import { fetchCodexQuota } from "@/lib/quota/codex";
 import { fetchGeminiCliQuota } from "@/lib/quota/gemini-cli";
 import { fetchKimiQuota } from "@/lib/quota/kimi";
+import { fetchMiniMaxQuota } from "@/lib/quota/minimax";
+import { fetchZaiQuota } from "@/lib/quota/zai";
 import { resolveProviderType } from "@/lib/quota/upstream";
 
 export const getProviderType = (file: AuthFile): ProviderType => {
@@ -20,6 +22,8 @@ export const fetchQuotaForFile = async (file: AuthFile) => {
   if (provider === "codex") return fetchCodexQuota(file);
   if (provider === "gemini-cli") return fetchGeminiCliQuota(file);
   if (provider === "kimi") return fetchKimiQuota(file);
+  if (provider === "minimax") return fetchMiniMaxQuota(file);
+  if (provider === "zai") return fetchZaiQuota(file);
 
   throw new Error(`Unsupported provider: ${provider}`);
 };

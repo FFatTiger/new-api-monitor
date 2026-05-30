@@ -1,4 +1,4 @@
-export type QuotaProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "xai" | "unknown";
+export type QuotaProviderType = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "minimax" | "xai" | "zai" | "unknown";
 
 export type GenericRecord = Record<string, unknown>;
 
@@ -317,7 +317,9 @@ export function resolveProviderType(file: { type?: unknown; provider?: unknown }
   if (raw === "codex") return "codex";
   if (raw === "gemini-cli") return "gemini-cli";
   if (raw === "kimi") return "kimi";
+  if (raw === "minimax" || raw === "mini-max") return "minimax";
   if (raw === "xai" || raw === "x-ai" || raw === "x.ai" || raw === "grok") return "xai";
+  if (raw === "zai" || raw === "z-ai" || raw === "z.ai") return "zai";
   return "unknown";
 }
 

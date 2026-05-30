@@ -77,7 +77,7 @@ function extractAndMaskAccountName(name: string): string {
   if (!name) return name;
 
   const base = name.replace(/\.json$/i, "");
-  const prefixes = ["antigravity-", "claude-", "codex-", "gemini-cli-", "kimi-", "xai-", "grok-"];
+  const prefixes = ["antigravity-", "claude-", "codex-", "gemini-cli-", "kimi-", "minimax-", "mini-max-", "xai-", "grok-", "zai-", "z-ai-", "z.ai-"];
   let remaining = base;
 
   for (const prefix of prefixes) {
@@ -126,6 +126,47 @@ export function extractProjectId(fileContent: Record<string, unknown>): string |
 
 export function normalizeAuthIndex(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+export function buildZaiAuthFile(apiKey: unknown): SanitizedAuthFile | null {
+  if (typeof apiKey !== "string" || !apiKey.trim()) return null;
+
+  return {
+    authIndex: "server-zai",
+    displayName: "Z.ai",
+    type: "zai",
+    provider: "zai",
+    runtimeOnly: false,
+    disabled: false,
+    unavailable: false,
+    projectId: null,
+    statusMessage: null,
+    planType: null,
+  };
+}
+
+function getMiniMaxDisplayName(region: unknown) {
+  const normalized = typeof region === "string" ? region.trim().toLowerCase() : "";
+  if (["cn", "china", "domestic", "mainland"].includes(normalized)) return "MiniMax CN";
+  if (["global", "intl", "international", "overseas"].includes(normalized)) return "MiniMax Global";
+  return "MiniMax";
+}
+
+export function buildMiniMaxAuthFile(apiKey: unknown, region: unknown): SanitizedAuthFile | null {
+  if (typeof apiKey !== "string" || !apiKey.trim()) return null;
+
+  return {
+    authIndex: "server-minimax",
+    displayName: getMiniMaxDisplayName(region),
+    type: "minimax",
+    provider: "minimax",
+    runtimeOnly: false,
+    disabled: false,
+    unavailable: false,
+    projectId: null,
+    statusMessage: null,
+    planType: null,
+  };
 }
 
 export function sanitizeAuthFile(file: RawAuthFile, projectId: string | null): SanitizedAuthFile {

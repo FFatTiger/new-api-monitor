@@ -58,7 +58,7 @@ function renderCodexWindow(windowData: RateLimitWindow | undefined, label: strin
       key={windowData.id || label}
       label={windowData.label || label}
       percent={remaining ?? 0}
-      valueLabel={remaining === null ? "--" : `${Math.round(remaining)}%`}
+      valueLabel={windowData.valueLabel || (remaining === null ? "--" : `${Math.round(remaining)}%`)}
       resetTime={resetAt}
       colorClass={remaining === null ? "bg-[var(--foreground-faint)]/40" : getProgressTone(remaining / 100)}
     />
@@ -199,6 +199,24 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
         })}
       </div>
     );
+  }
+
+  if (type === "minimax") {
+    const windows = data.windows || [];
+    if (!windows.length) {
+      return <div className="text-[0.78rem] text-[var(--foreground-faint)]">暂无额度数据</div>;
+    }
+
+    return <div className="space-y-2.5">{windows.map((window) => renderCodexWindow(window, window.label || window.id || "额度"))}</div>;
+  }
+
+  if (type === "zai") {
+    const windows = data.windows || [];
+    if (!windows.length) {
+      return <div className="text-[0.78rem] text-[var(--foreground-faint)]">暂无额度数据</div>;
+    }
+
+    return <div className="space-y-2.5">{windows.map((window) => renderCodexWindow(window, window.label || window.id || "额度"))}</div>;
   }
 
   return <div className="text-[0.78rem] text-[var(--foreground-faint)]">未知数据格式</div>;

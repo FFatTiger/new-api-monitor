@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 
-import { extractProjectId, sanitizeAuthFile, type RawAuthFile } from "@/lib/quota/auth-files";
+import { buildMiniMaxAuthFile, buildZaiAuthFile, extractProjectId, sanitizeAuthFile, type RawAuthFile } from "@/lib/quota/auth-files";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
 const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
+const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.ZAI_API_TOKEN || "";
+const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "";
+const MINIMAX_API_REGION = process.env.MINIMAX_API_REGION || "auto";
 
 async function fetchFileContent(name: string): Promise<Record<string, unknown> | null> {
   try {
@@ -35,7 +38,19 @@ function publicError(status = 500) {
 }
 
 export async function GET() {
+  const serverAuthFiles = [
+    buildZaiAuthFile(ZAI_API_KEY),
+    buildMiniMaxAuthFile(MINIMAX_API_KEY, MINIMAX_API_REGION),
+  ].filter((file): file is NonNullable<typeof file> => Boolean(file));
+
   if (!API_BASE_URL || !API_MANAGEMENT_KEY) {
+    if (serverAuthFiles.length) {
+      return NextResponse.json(
+        { files: serverAuthFiles },
+        { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+      );
+    }
+
     return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
   }
 
@@ -55,7 +70,10 @@ export async function GET() {
 
     const data = (await response.json()) as { files?: RawAuthFile[] };
     if (!Array.isArray(data.files)) {
-      return NextResponse.json({ files: [] }, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
+      return NextResponse.json(
+        { files: serverAuthFiles },
+        { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
+      );
     }
 
     const sanitizedFiles = await Promise.all(
@@ -74,7 +92,7 @@ export async function GET() {
     );
 
     return NextResponse.json(
-      { files: sanitizedFiles },
+      { files: [...sanitizedFiles, ...serverAuthFiles] },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error: unknown) {

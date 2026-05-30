@@ -19,6 +19,16 @@ describe("upstream quota compatibility", () => {
     assert.equal(resolveProviderType({ type: "grok" }), "xai");
   });
 
+  it("recognizes Z.ai auth files from the server-side quota provider list", () => {
+    assert.equal(resolveProviderType({ type: "zai" }), "zai");
+    assert.equal(resolveProviderType({ type: "z.ai" }), "zai");
+  });
+
+  it("recognizes MiniMax auth files from the server-side quota provider list", () => {
+    assert.equal(resolveProviderType({ type: "minimax" }), "minimax");
+    assert.equal(resolveProviderType({ type: "mini-max" }), "minimax");
+  });
+
   it("normalizes Codex plan labels including ProLite variants", () => {
     assert.equal(normalizeCodexPlanType("pro_lite"), "prolite");
     assert.equal(normalizeCodexPlanType("pro-lite"), "prolite");
