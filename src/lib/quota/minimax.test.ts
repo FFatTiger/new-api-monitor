@@ -6,53 +6,62 @@ import {
   getMiniMaxEndpointCandidates,
   normalizeMiniMaxApiKey,
   normalizeMiniMaxRegion,
-  resolveMiniMaxPlanType,
 } from "./minimax.ts";
 
 describe("MiniMax quota compatibility", () => {
-  it("normalizes remaining counts into used and remaining prompt quota", () => {
+  it("normalizes the new general model hourly and weekly percentage limits", () => {
     const data = buildMiniMaxQuotaData(
       {
         base_resp: { status_code: 0, status_msg: "success" },
         model_remains: [
           {
-            model_name: "MiniMax-M*",
-            current_interval_total_count: 1500,
-            current_interval_usage_count: 1496,
-            remains_time: 2840158,
-            start_time: 1780142400000,
-            end_time: 1780156800000,
+            model_name: "general",
+            start_time: 1780261200000,
+            end_time: 1780279200000,
+            remains_time: 4628310,
+            current_interval_total_count: 0,
+            current_interval_usage_count: 0,
+            current_weekly_total_count: 0,
+            current_weekly_usage_count: 0,
+            weekly_start_time: 1780243200000,
+            weekly_end_time: 1780848000000,
+            weekly_remains_time: 573428310,
+            current_interval_status: 1,
+            current_interval_remaining_percent: 99,
+            current_weekly_status: 3,
+            current_weekly_remaining_percent: 100,
           },
           {
-            model_name: "speech-hd",
-            current_interval_total_count: 4000,
-            current_interval_usage_count: 4000,
-          },
-        ],
-        category_remains: [
-          {
-            category: "text_generation",
-            display_name: "文本生成",
-            current_interval_total_count: 1500,
-            current_interval_usage_count: 1496,
+            model_name: "video",
+            start_time: 1780243200000,
+            end_time: 1780329600000,
+            current_interval_remaining_percent: 100,
+            weekly_end_time: 1780848000000,
+            current_weekly_remaining_percent: 100,
           },
         ],
       },
-      "global",
+      "cn",
     );
 
-    assert.equal(data.planType, "starter");
-    assert.equal(data.tierLabel, "Starter");
-    assert.equal(data.windows?.length, 1);
-    assert.equal(data.windows?.[0].label, "4小时额度");
-    assert.equal(data.windows?.[0].usedPercent, 0.3);
-    assert.equal(data.windows?.[0].remainingPercent, 99.7);
-    assert.equal(Math.round((data.windows?.[0].usedPrompt || 0) * 100) / 100, 0.27);
-    assert.equal(data.windows?.[0].valueLabel, "99.7/100P");
-    assert.equal(data.windows?.[0].resetTime, 1780156800000);
+    assert.equal(data.planType, undefined);
+    assert.equal(data.tierLabel, null);
+    assert.equal(data.windows?.length, 2);
+    assert.equal(data.windows?.[0].id, "minimax-hour");
+    assert.equal(data.windows?.[0].label, "5小时额度");
+    assert.equal(data.windows?.[0].usedPercent, 1);
+    assert.equal(data.windows?.[0].remainingPercent, 99);
+    assert.equal(data.windows?.[0].valueLabel, "99%");
+    assert.equal(data.windows?.[0].resetTime, 1780279200000);
+    assert.equal(data.windows?.[1].id, "minimax-week");
+    assert.equal(data.windows?.[1].label, "周额度");
+    assert.equal(data.windows?.[1].usedPercent, 0);
+    assert.equal(data.windows?.[1].remainingPercent, 100);
+    assert.equal(data.windows?.[1].valueLabel, "100%");
+    assert.equal(data.windows?.[1].resetTime, 1780848000000);
   });
 
-  it("adds a weekly window only when MiniMax returns a weekly total", () => {
+  it("does not parse legacy prompt count limits without percentage fields", () => {
     const data = buildMiniMaxQuotaData(
       {
         base_resp: { status_code: 0, status_msg: "success" },
@@ -71,21 +80,7 @@ describe("MiniMax quota compatibility", () => {
       "global",
     );
 
-    assert.equal(data.windows?.length, 2);
-    assert.equal(data.windows?.[0].label, "4小时额度");
-    assert.equal(data.windows?.[1].label, "周额度");
-    assert.equal(data.windows?.[1].remainingPercent, 80);
-    assert.equal(data.windows?.[1].valueLabel, "160/200P");
-    assert.equal(data.windows?.[1].resetTime, 1780243200000);
-  });
-
-  it("maps prompt limits to domestic and international plan names", () => {
-    assert.equal(resolveMiniMaxPlanType(40, "cn"), "starter");
-    assert.equal(resolveMiniMaxPlanType(100, "cn"), "plus");
-    assert.equal(resolveMiniMaxPlanType(100, "global"), "starter");
-    assert.equal(resolveMiniMaxPlanType(300, "global"), "plus");
-    assert.equal(resolveMiniMaxPlanType(1000, "global"), "max");
-    assert.equal(resolveMiniMaxPlanType(2000, "cn"), "ultra");
+    assert.equal(data.windows?.length, 0);
   });
 
   it("tries the domestic endpoint first in auto mode and honors explicit region", () => {
