@@ -3,15 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { AuthFile } from "@/types/auth";
-import type { QuotaState } from "@/types/quota";
+import type { ProviderType, QuotaData, QuotaState, QuotaUsagePredictionRow } from "@/types/quota";
 
 import { apiFetch } from "@/lib/quota/api-client";
 import { clearQuotaCache, CACHE_KEY, loadQuotaCache, saveQuotaCache } from "@/lib/quota/cache";
 import { getQuotaFetchSkipReason } from "@/lib/quota/fetch-policy";
-import { fetchQuotaForFile } from "@/lib/quota/providers";
+import { fetchQuotaForFile, getProviderType } from "@/lib/quota/providers";
+import { DEFAULT_QUOTA_USAGE_WINDOW_MINUTES } from "@/lib/quota/usage-config";
 
 type UsageStatsResponse = {
   byAuthIndex?: Record<string, { success: number; failure: number }>;
+};
+
+type PredictionResponse = {
+  predictions?: QuotaUsagePredictionRow[];
+  error?: string;
 };
 
 type CacheSnapshot = {
@@ -56,6 +62,36 @@ const fetchUsageStats = async () => {
   }
 };
 
+function buildSnapshotPayload(files: AuthFile[], quotas: Record<string, QuotaState>) {
+  const grouped = new Map<ProviderType, QuotaData[]>();
+
+  files.forEach((file) => {
+    const provider = getProviderType(file);
+    const data = quotas[file.authIndex]?.data;
+    if (!data || provider === "unknown") return;
+    grouped.set(provider, [...(grouped.get(provider) || []), data]);
+  });
+
+  return {
+    providers: Array.from(grouped.entries()).map(([provider, data]) => ({ provider, data })),
+  };
+}
+
+async function recordQuotaSnapshots(files: AuthFile[], quotas: Record<string, QuotaState>) {
+  const payload = buildSnapshotPayload(files, quotas);
+  if (!payload.providers.length) return;
+
+  try {
+    await apiFetch("/quota-usage-snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.warn("Failed to record quota snapshots", error);
+  }
+}
+
 export const useQuota = () => {
   const cached = typeof window === "undefined" ? null : loadQuotaCache();
   const initialCache = cached && cached.authFiles.length > 0 ? cached : emptyCacheSnapshot;
@@ -66,6 +102,27 @@ export const useQuota = () => {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [cacheLoaded, setCacheLoaded] = useState(initialCache !== emptyCacheSnapshot);
+  const [quotaPredictions, setQuotaPredictions] = useState<QuotaUsagePredictionRow[]>([]);
+  const [predictionLoading, setPredictionLoading] = useState(false);
+  const [predictionError, setPredictionError] = useState<string | null>(null);
+
+  const loadQuotaPredictions = useCallback(async (windowMinutes = DEFAULT_QUOTA_USAGE_WINDOW_MINUTES) => {
+    setPredictionLoading(true);
+    setPredictionError(null);
+
+    try {
+      const response = await apiFetch(`/quota-usage-prediction?windowMinutes=${encodeURIComponent(String(windowMinutes))}`);
+      const payload = (await response.json()) as PredictionResponse;
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to fetch quota usage predictions");
+      }
+      setQuotaPredictions(payload.predictions || []);
+    } catch (error: unknown) {
+      setPredictionError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPredictionLoading(false);
+    }
+  }, []);
 
   const loadAuthFiles = useCallback(async (forceRefresh = false) => {
     if (forceRefresh) {
@@ -142,6 +199,7 @@ export const useQuota = () => {
         };
       });
 
+      await recordQuotaSnapshots(files, nextQuotas);
       setQuotas(nextQuotas);
       saveQuotaCache(files, nextQuotas);
       setCacheLoaded(true);
@@ -214,7 +272,11 @@ export const useQuota = () => {
     globalLoading,
     globalError,
     autoRefresh,
+    quotaPredictions,
+    predictionLoading,
+    predictionError,
     setAutoRefresh,
     loadAuthFiles,
+    loadQuotaPredictions,
   };
 };
