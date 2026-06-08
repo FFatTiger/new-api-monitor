@@ -24,7 +24,7 @@ function clampPercent(value: number) {
 function normalizeZaiUsagePercent(value: unknown): number | null {
   const numberValue = normalizeNumberValue(value);
   if (numberValue === null) return null;
-  return clampPercent(numberValue >= 0 && numberValue <= 1 ? numberValue * 100 : numberValue);
+  return clampPercent(numberValue);
 }
 
 function normalizeZaiLimitId(value: string) {
