@@ -1,15 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/navigation/app-header";
 import { ProviderCard } from "@/components/quota/provider-card";
+import { QuotaPredictionPanel } from "@/components/quota/quota-prediction-panel";
 import { QuotaIcons } from "@/components/quota/quota-icons";
 import { ProviderTabs } from "@/components/quota/provider-tabs";
 import { useQuota } from "@/hooks/useQuota";
 import { normalizeFraction } from "@/lib/quota/normalize";
 import { getProviderType } from "@/lib/quota/providers";
 import { sortQuotaFiles } from "@/lib/quota/sort-policy";
+import { DEFAULT_QUOTA_USAGE_WINDOW_MINUTES } from "@/lib/quota/usage-config";
 import type { ProviderFilter, QuotaState } from "@/types/quota";
 
 const providerTabs: Array<{ key: ProviderFilter; label: string }> = [
@@ -143,10 +145,27 @@ function getCodexMetrics(quota: QuotaState | undefined, window: "primary" | "sec
 }
 
 export function QuotaPageClient() {
-  const { authFiles, quotas, globalLoading, globalError, autoRefresh, setAutoRefresh, loadAuthFiles } = useQuota();
+  const {
+    authFiles,
+    quotas,
+    globalLoading,
+    globalError,
+    autoRefresh,
+    quotaPredictions,
+    predictionLoading,
+    predictionError,
+    setAutoRefresh,
+    loadAuthFiles,
+    loadQuotaPredictions,
+  } = useQuota();
   const [selectedProvider, setSelectedProvider] = useState<ProviderFilter>("all");
   const [sortOption, setSortOption] = useState<SortOption>("default");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [usageWindowMinutes, setUsageWindowMinutes] = useState(DEFAULT_QUOTA_USAGE_WINDOW_MINUTES);
+
+  useEffect(() => {
+    void loadQuotaPredictions(usageWindowMinutes);
+  }, [loadQuotaPredictions, quotas, usageWindowMinutes]);
 
   const providerCounts = useMemo(() => {
     const counts: Record<ProviderFilter, number> = {
@@ -325,6 +344,15 @@ export function QuotaPageClient() {
             setSortOption("default");
             setSortDirection("desc");
           }}
+        />
+
+        <QuotaPredictionPanel
+          predictions={quotaPredictions}
+          selectedProvider={selectedProvider}
+          windowMinutes={usageWindowMinutes}
+          loading={predictionLoading}
+          error={predictionError}
+          onWindowMinutesChange={setUsageWindowMinutes}
         />
 
         {globalError ? (
