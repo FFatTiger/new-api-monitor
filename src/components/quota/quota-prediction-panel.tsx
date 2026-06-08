@@ -1,9 +1,8 @@
 "use client";
 
 import { ProviderIcon } from "@/components/quota/provider-icon";
-import { formatCompactNumberStr } from "@/lib/format";
 import { QUOTA_USAGE_WINDOW_OPTIONS } from "@/lib/quota/usage-config";
-import { formatPredictionDurationMinutes } from "@/lib/quota/usage-presentation";
+import { formatPredictionExhaustionLabel } from "@/lib/quota/usage-presentation";
 import type { ProviderFilter, ProviderType, QuotaUsagePredictionRow } from "@/types/quota";
 
 const providerLabels: Record<Exclude<ProviderType, "unknown">, string> = {
@@ -23,16 +22,7 @@ function getProviderLabel(provider: ProviderType) {
 }
 
 function getEtaLabel(row: QuotaUsagePredictionRow) {
-  if (row.status === "unconfigured") return "未配置";
-  if (row.status === "no_snapshot") return "采样";
-  if (row.status === "no_recent_usage") return "--";
-  if (row.status === "exhausted") return "0M";
-  return formatPredictionDurationMinutes(row.minutesLeft);
-}
-
-function getSpeedLabel(row: QuotaUsagePredictionRow) {
-  if (row.status === "unconfigured" || row.recentQuotaPerHour === null) return "--";
-  return `${formatCompactNumberStr(row.recentQuotaPerHour)}/h`;
+  return formatPredictionExhaustionLabel(row.status, row.minutesLeft);
 }
 
 function PredictionChip({ row }: { row: QuotaUsagePredictionRow }) {
@@ -41,13 +31,12 @@ function PredictionChip({ row }: { row: QuotaUsagePredictionRow }) {
   return (
     <div
       className="flex min-w-0 items-center gap-2 rounded-full bg-[var(--background-elevated)] px-2.5 py-1.5 text-[0.72rem] shadow-[0_0_0_1px_var(--surface-ring-soft)]"
-      title={`${getProviderLabel(row.provider)} · ${getSpeedLabel(row)} · ${getEtaLabel(row)}`}
+      title={`${getProviderLabel(row.provider)} · ${getEtaLabel(row)}`}
     >
       <div className="shrink-0">
         <ProviderIcon type={row.provider} />
       </div>
       <span className="font-medium text-[var(--foreground)]">{getProviderLabel(row.provider)}</span>
-      <span className="ds-mono text-[var(--foreground-soft)]">{getSpeedLabel(row)}</span>
       <span className={["ds-mono", ready ? "text-emerald-500" : "text-[var(--foreground-faint)]"].join(" ")}>{getEtaLabel(row)}</span>
     </div>
   );

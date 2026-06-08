@@ -12,3 +12,11 @@ export function formatPredictionDurationMinutes(value: number | null) {
   if (hours > 0) return `${hours}H${minutes > 0 ? ` ${minutes}M` : ""}`;
   return `${minutes}M`;
 }
+
+export function formatPredictionExhaustionLabel(status: string, minutesLeft: number | null) {
+  if (status === "unconfigured") return "未配置";
+  if (status === "no_snapshot") return "等待采样";
+  if (status === "no_recent_usage") return "暂无趋势";
+  if (status === "exhausted") return "已耗尽";
+  return `预计 ${formatPredictionDurationMinutes(minutesLeft)} 耗尽`;
+}
