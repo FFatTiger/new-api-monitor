@@ -92,6 +92,24 @@ export interface QuotaData {
   endpointRegion?: string | null;
 }
 
+export type QuotaUsagePredictionStatus = "ready" | "unconfigured" | "no_snapshot" | "no_recent_usage" | "exhausted";
+
+export interface QuotaUsagePredictionRow {
+  provider: ProviderType;
+  channelIds: number[];
+  configured: boolean;
+  todayGptTokens: number;
+  todayQuota: number;
+  recentQuota: number;
+  recentQuotaPerHour: number | null;
+  latestRemainingPercent: number | null;
+  latestUsedPercent: number | null;
+  resetTime: string | null;
+  minutesLeft: number | null;
+  exhaustAt: number | null;
+  status: QuotaUsagePredictionStatus;
+}
+
 export interface CacheData {
   authFiles: AuthFile[];
   quotas: Record<string, QuotaState>;
