@@ -9,6 +9,8 @@ export const ZAI_USAGE_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 
 type ZaiLimit = {
   type?: unknown;
+  unit?: unknown;
+  number?: unknown;
   percentage?: unknown;
   nextResetTime?: unknown;
 };
@@ -35,7 +37,12 @@ function normalizeZaiLimitId(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function toZaiLimitLabel(value: string) {
+function toZaiLimitLabel(value: string, limit: ZaiLimit) {
+  const unit = normalizeNumberValue(limit.unit);
+  const number = normalizeNumberValue(limit.number);
+  if (unit === 3 && number !== null) return `${number}小时额度`;
+  if (unit === 5 && number === 1) return "周额度";
+
   const words = value.replace(/_LIMIT$/i, "").split(/[_\s-]+/).filter(Boolean);
   if (!words.length) return "Limit";
 
@@ -80,7 +87,7 @@ export function buildZaiQuotaWindows(payload: unknown): RateLimitWindow[] {
     const id = normalizeZaiLimitId(type) || "limit";
     windows.push({
       id,
-      label: toZaiLimitLabel(type),
+      label: toZaiLimitLabel(type, limit),
       usedPercent,
       remainingPercent: clampPercent(100 - usedPercent),
       resetTime:

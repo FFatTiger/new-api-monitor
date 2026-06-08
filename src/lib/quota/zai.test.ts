@@ -8,17 +8,18 @@ describe("z.ai quota compatibility", () => {
     const windows = buildZaiQuotaWindows({
       data: {
         limits: [
-          { type: "REQUESTS_LIMIT", percentage: 15, nextResetTime: 1_800_000_000_000 },
-          { type: "TOKENS_LIMIT", percentage: 1, nextResetTime: 1_800_000_100_000 },
+          { type: "TIME_LIMIT", unit: 5, number: 1, percentage: 15, nextResetTime: 1_800_000_000_000 },
+          { type: "TOKENS_LIMIT", unit: 3, number: 5, percentage: 1, nextResetTime: 1_800_000_100_000 },
         ],
       },
     });
 
     assert.deepEqual(
       windows.map((window) => window.id),
-      ["tokens-limit", "requests-limit"],
+      ["tokens-limit", "time-limit"],
     );
-    assert.equal(windows[0].label, "Tokens");
+    assert.equal(windows[0].label, "5小时额度");
+    assert.equal(windows[1].label, "周额度");
     assert.equal(windows[0].usedPercent, 1);
     assert.equal(windows[0].remainingPercent, 99);
     assert.equal(windows[0].resetTime, 1_800_000_100_000);
