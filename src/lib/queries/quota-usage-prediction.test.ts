@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 
 import {
   buildQuotaUsagePrediction,
+  getQuotaSnapshotRetentionSeconds,
   shouldWriteQuotaSnapshot,
 } from "./quota-usage-prediction.ts";
+import { QUOTA_USAGE_WINDOW_OPTIONS } from "../quota/usage-config.ts";
 
 describe("quota usage prediction", () => {
   it("writes first snapshot and throttles unchanged snapshots for five minutes", () => {
@@ -15,6 +17,11 @@ describe("quota usage prediction", () => {
 
   it("writes immediately when reset time changes", () => {
     assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 990, resetTime: "old" }, { sampledAt: 1_000, resetTime: "new" }), true);
+  });
+
+  it("retains snapshots only for the largest selectable window plus sampling buffer", () => {
+    const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
+    assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 60 + 5 * 60);
   });
 
   it("builds an exhaustion estimate from today quota, used percent, and recent speed", () => {

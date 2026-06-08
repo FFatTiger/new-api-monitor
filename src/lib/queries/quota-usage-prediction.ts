@@ -1,10 +1,9 @@
 import { query, withClient } from "../db.ts";
-import { getQuotaUsageGroupsFromEnv, type QuotaUsageGroupMap } from "../quota/usage-config.ts";
+import { getQuotaUsageGroupsFromEnv, QUOTA_USAGE_WINDOW_OPTIONS, type QuotaUsageGroupMap } from "../quota/usage-config.ts";
 import type { ProviderQuotaSnapshotInput } from "../quota/usage-aggregation.ts";
 import type { ProviderType, QuotaUsagePredictionRow } from "../../types/quota.ts";
 
 const SNAPSHOT_INTERVAL_SECONDS = 5 * 60;
-const SNAPSHOT_RETENTION_SECONDS = 30 * 24 * 60 * 60;
 const SHANGHAI_OFFSET_SECONDS = 8 * 60 * 60;
 
 type LatestSnapshot = {
@@ -62,6 +61,11 @@ export function shouldWriteQuotaSnapshot(previous: Pick<LatestSnapshot, "sampled
   const nextReset = normalizeResetTime(next.resetTime);
   if (previousReset !== nextReset) return true;
   return next.sampledAt - previous.sampledAt >= SNAPSHOT_INTERVAL_SECONDS;
+}
+
+export function getQuotaSnapshotRetentionSeconds() {
+  const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
+  return maxWindowMinutes * 60 + SNAPSHOT_INTERVAL_SECONDS;
 }
 
 export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePredictionRow {
@@ -144,7 +148,7 @@ export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput
       inserted += 1;
     }
 
-    await client.query(`DELETE FROM quota_snapshots WHERE sampled_at < $1`, [nowSeconds - SNAPSHOT_RETENTION_SECONDS]);
+    await client.query(`DELETE FROM quota_snapshots WHERE sampled_at < $1`, [nowSeconds - getQuotaSnapshotRetentionSeconds()]);
   });
 
   return { inserted };

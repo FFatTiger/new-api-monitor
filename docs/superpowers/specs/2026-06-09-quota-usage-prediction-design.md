@@ -16,7 +16,7 @@ This applies to all quota providers shown on the quota page, including Codex, Cl
 - Snapshot sampling interval is 5 minutes.
 - First successful provider quota fetch writes a snapshot immediately.
 - A provider reset-time change writes a snapshot immediately.
-- Snapshots are retained for 30 days.
+- Snapshots are retained for the largest selectable speed window plus one sampling interval. With the current 1-day maximum and 5-minute sampling interval, retention is 1 day and 5 minutes.
 
 ## Configuration
 
@@ -86,7 +86,7 @@ Snapshot write policy:
 - Write when the latest snapshot is at least 5 minutes old.
 - Write immediately when normalized `reset_time` changes.
 - Skip writing when provider quota has no usable remaining/used percentage.
-- Delete snapshots older than 30 days opportunistically during successful writes.
+- Delete snapshots older than the largest selectable speed window plus one sampling interval opportunistically during successful writes. With the current options, anything older than 1 day and 5 minutes is no longer used by the prediction UI.
 
 ## Usage Query
 

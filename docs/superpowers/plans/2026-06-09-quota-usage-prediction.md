@@ -477,7 +477,6 @@ import type { ProviderQuotaSnapshotInput } from "@/lib/quota/usage-aggregation";
 import type { ProviderType, QuotaUsagePredictionRow } from "@/types/quota";
 
 const SNAPSHOT_INTERVAL_SECONDS = 5 * 60;
-const SNAPSHOT_RETENTION_SECONDS = 30 * 24 * 60 * 60;
 const SHANGHAI_OFFSET_SECONDS = 8 * 60 * 60;
 
 type LatestSnapshot = {
