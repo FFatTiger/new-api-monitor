@@ -24,7 +24,11 @@ type MiniMaxRemain = {
   weekly_start_time?: unknown;
   weekly_remains_time?: unknown;
   weekly_end_time?: unknown;
+  current_interval_usage_count?: unknown;
+  current_interval_status?: unknown;
   current_interval_remaining_percent?: unknown;
+  current_weekly_usage_count?: unknown;
+  current_weekly_status?: unknown;
   current_weekly_remaining_percent?: unknown;
 };
 
@@ -74,7 +78,15 @@ function getMiniMaxRemainingPercent(item: MiniMaxRemain, window: "hour" | "week"
   const value = normalizeNumberValue(
     window === "hour" ? item.current_interval_remaining_percent : item.current_weekly_remaining_percent,
   );
-  return value === null ? null : clampPercent(value);
+  if (value === null) return null;
+
+  const status = normalizeNumberValue(window === "hour" ? item.current_interval_status : item.current_weekly_status);
+  const usageCount = normalizeNumberValue(window === "hour" ? item.current_interval_usage_count : item.current_weekly_usage_count);
+  if (value === 0 && status === 1 && usageCount === 0) {
+    return 100;
+  }
+
+  return clampPercent(value);
 }
 
 function toMiniMaxWindow(item: MiniMaxRemain, window: "hour" | "week"): RateLimitWindow | null {

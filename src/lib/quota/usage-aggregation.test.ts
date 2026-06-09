@@ -34,6 +34,15 @@ describe("quota usage aggregation", () => {
     });
   });
 
+  it("does not use MiniMax short windows for quota prediction when weekly quota is missing", () => {
+    assert.equal(
+      getQuotaWindowSnapshot("minimax", {
+        windows: [{ id: "minimax-hour", label: "5小时额度", remainingPercent: 50, usedPercent: 50, resetTime: "short-reset" }],
+      }),
+      null,
+    );
+  });
+
   it("uses the Z.ai weekly window for quota prediction instead of the short token window", () => {
     const snapshot = getQuotaWindowSnapshot("zai", {
       windows: [
@@ -50,8 +59,8 @@ describe("quota usage aggregation", () => {
   });
 
   it("falls back to remaining percent derived from used percent", () => {
-    const snapshot = getQuotaWindowSnapshot("zai", {
-      windows: [{ id: "tokens-limit", usedPercent: 42, resetTime: 123 }],
+    const snapshot = getQuotaWindowSnapshot("codex", {
+      windows: [{ id: "codex-weekly", label: "周窗口", usedPercent: 42, resetTime: 123 }],
     });
 
     assert.deepEqual(snapshot, {

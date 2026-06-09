@@ -49,22 +49,11 @@ function findWeeklyWindow(windows: RateLimitWindow[]) {
 }
 
 function findMiniMaxWindow(windows: RateLimitWindow[]) {
-  return (
-    findWeeklyWindow(windows) ||
-    windows.find((windowData) => {
-      const id = String(windowData.id || "").toLowerCase();
-      const label = String(windowData.label || "").toLowerCase();
-      return id.includes("hour") || label.includes("小时") || label.includes("hour");
-    }) ||
-    windows[0]
-  );
+  return findWeeklyWindow(windows);
 }
 
 function findZaiWindow(windows: RateLimitWindow[]) {
-  return (
-    findWeeklyWindow(windows) ||
-    windows[0]
-  );
+  return findWeeklyWindow(windows);
 }
 
 function getRingWindow(type: ProviderType, data: QuotaData) {

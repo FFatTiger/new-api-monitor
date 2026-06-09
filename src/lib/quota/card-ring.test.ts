@@ -47,16 +47,16 @@ describe("weekly quota ring data", () => {
     });
   });
 
-  it("shows the MiniMax current window when no weekly quota is returned", () => {
+  it("does not show the MiniMax short window as the weekly quota summary", () => {
     const data: QuotaData = {
       windows: [{ id: "minimax-hour", label: "4小时额度", remainingPercent: 99.7, valueLabel: "99.7/100P" }],
     };
 
     assert.deepEqual(getWeeklyQuotaRingData("minimax", data), {
-      percent: 100,
-      label: "4小时额度",
-      valueLabel: "100%",
-      tone: "emerald",
+      percent: null,
+      label: "周额度",
+      valueLabel: "--",
+      tone: "muted",
     });
   });
 

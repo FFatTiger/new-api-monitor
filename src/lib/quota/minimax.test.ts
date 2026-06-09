@@ -61,6 +61,35 @@ describe("MiniMax quota compatibility", () => {
     assert.equal(data.windows?.[1].resetTime, 1780848000000);
   });
 
+  it("treats zero MiniMax remaining percent with active status and no usage as full quota", () => {
+    const data = buildMiniMaxQuotaData(
+      {
+        base_resp: { status_code: 0, status_msg: "success" },
+        model_remains: [
+          {
+            model_name: "general",
+            start_time: 1780261200000,
+            end_time: 1780279200000,
+            current_interval_usage_count: 0,
+            current_interval_status: 1,
+            current_interval_remaining_percent: 0,
+            weekly_start_time: 1780243200000,
+            weekly_end_time: 1780848000000,
+            current_weekly_usage_count: 0,
+            current_weekly_status: 1,
+            current_weekly_remaining_percent: 0,
+          },
+        ],
+      },
+      "cn",
+    );
+
+    assert.equal(data.windows?.[0].remainingPercent, 100);
+    assert.equal(data.windows?.[0].usedPercent, 0);
+    assert.equal(data.windows?.[1].remainingPercent, 100);
+    assert.equal(data.windows?.[1].usedPercent, 0);
+  });
+
   it("does not parse legacy prompt count limits without percentage fields", () => {
     const data = buildMiniMaxQuotaData(
       {
