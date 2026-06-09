@@ -135,7 +135,11 @@ export function shouldWriteQuotaSnapshot(
 
 export function getQuotaSnapshotRetentionSeconds(intervalSeconds = getQuotaSnapshotIntervalSecondsFromEnv()) {
   const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
-  return maxWindowMinutes * 60 + intervalSeconds;
+  return maxWindowMinutes * 2 * 60 + intervalSeconds;
+}
+
+export function getQuotaSnapshotWindowStart(latestSampledAt: number, windowMinutes: number) {
+  return latestSampledAt - windowMinutes * 60;
 }
 
 export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePredictionRow {
@@ -172,9 +176,8 @@ export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePre
   }
 
   const percentPerMinute = deltaUsedPercent / deltaMinutes;
-  const minutesLeftFromLatestSnapshot = Math.max(0, Math.round(input.latestRemainingPercent / percentPerMinute));
-  const exhaustAt = input.latestSampledAt + minutesLeftFromLatestSnapshot * 60;
-  const minutesLeft = Math.max(0, Math.round((exhaustAt - input.nowSeconds) / 60));
+  const minutesLeft = Math.max(0, Math.round(input.latestRemainingPercent / percentPerMinute));
+  const exhaustAt = input.nowSeconds + minutesLeft * 60;
 
   return {
     ...base,
@@ -282,6 +285,7 @@ export async function getQuotaUsagePredictions(
 
   const todayStart = getTodayStartShanghaiSeconds(nowSeconds);
   const recentStart = nowSeconds - windowMinutes * 60;
+  const snapshotRetentionStart = nowSeconds - getQuotaSnapshotRetentionSeconds();
 
   const rows = await Promise.all(
     providers.map(async (provider) => {
@@ -327,13 +331,14 @@ export async function getQuotaUsagePredictions(
             ORDER BY sampled_at DESC
             LIMIT 1
           `,
-          [provider, recentStart, nowSeconds],
+          [provider, snapshotRetentionStart, nowSeconds],
         ),
       ]);
 
       const usage = usageResult.rows[0];
       const latest = mapSnapshot(snapshotResult.rows[0]);
-      const baseline = await getBaselineSnapshot(provider, latest, recentStart);
+      const snapshotWindowStart = latest ? getQuotaSnapshotWindowStart(latest.sampledAt, windowMinutes) : recentStart;
+      const baseline = await getBaselineSnapshot(provider, latest, snapshotWindowStart);
 
       return buildQuotaUsagePrediction({
         provider,

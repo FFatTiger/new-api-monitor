@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildQuotaUsagePrediction,
   getQuotaSnapshotRetentionSeconds,
+  getQuotaSnapshotWindowStart,
   selectQuotaBaselineSnapshot,
   shouldWriteQuotaSnapshot,
 } from "./quota-usage-prediction.ts";
@@ -26,10 +27,14 @@ describe("quota usage prediction", () => {
     assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 990, resetTime: "1781138161" }, { sampledAt: 1_000, resetTime: "1781138162" }), false);
   });
 
-  it("retains one day of snapshots plus sampling buffer", () => {
+  it("retains two full max windows plus sampling buffer for shifted data windows", () => {
     const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
-    assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 60 + 300);
-    assert.equal(getQuotaSnapshotRetentionSeconds(120), maxWindowMinutes * 60 + 120);
+    assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 2 * 60 + 300);
+    assert.equal(getQuotaSnapshotRetentionSeconds(120), maxWindowMinutes * 2 * 60 + 120);
+  });
+
+  it("anchors the selected snapshot window to the latest snapshot instead of now", () => {
+    assert.equal(getQuotaSnapshotWindowStart(20_000, 360), 20_000 - 360 * 60);
   });
 
   it("prefers the oldest snapshot inside the selected window as the baseline", () => {
@@ -68,7 +73,7 @@ describe("quota usage prediction", () => {
     assert.equal(row.exhaustAt, 454_600);
   });
 
-  it("does not add the trailing no-snapshot gap to the exhaustion estimate", () => {
+  it("uses trailing no-snapshot gaps only to clip the speed denominator", () => {
     const row = buildQuotaUsagePrediction({
       provider: "codex",
       channelIds: [8],
@@ -86,8 +91,8 @@ describe("quota usage prediction", () => {
     });
 
     assert.equal(row.status, "ready");
-    assert.equal(row.exhaustAt, 4_600);
-    assert.equal(row.minutesLeft, 50);
+    assert.equal(row.exhaustAt, 5_200);
+    assert.equal(row.minutesLeft, 60);
   });
 
   it("keeps the exhaustion estimate even when it is after reset", () => {
