@@ -192,9 +192,12 @@ export async function ensureQuotaSnapshotTable() {
 }
 
 export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput[], nowSeconds = Math.floor(Date.now() / 1000)) {
-  if (!snapshots.length) return { inserted: 0 };
-
   await ensureQuotaSnapshotTable();
+  if (!snapshots.length) {
+    await pruneQuotaSnapshots(nowSeconds);
+    return { inserted: 0 };
+  }
+
   let inserted = 0;
 
   await withClient(async (client) => {
@@ -220,6 +223,14 @@ export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput
   });
 
   return { inserted };
+}
+
+export async function pruneQuotaSnapshots(nowSeconds = Math.floor(Date.now() / 1000)) {
+  await ensureQuotaSnapshotTable();
+  const result = await query(`DELETE FROM quota_snapshots WHERE sampled_at < $1`, [
+    nowSeconds - getQuotaSnapshotRetentionSeconds(),
+  ]);
+  return { deleted: result.rowCount ?? 0 };
 }
 
 async function getBaselineSnapshot(provider: ProviderType, latest: LatestSnapshot | null, windowStart: number) {

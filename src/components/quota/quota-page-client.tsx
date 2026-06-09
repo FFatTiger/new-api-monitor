@@ -320,7 +320,7 @@ export function QuotaPageClient() {
 
       <button
         type="button"
-        onClick={() => void loadAuthFiles(true)}
+        onClick={() => void loadAuthFiles()}
         disabled={globalLoading}
         className="ds-icon-button h-10 w-10"
         aria-label="刷新 quota 数据"

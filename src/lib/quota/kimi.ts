@@ -1,12 +1,12 @@
-import type { AuthFile } from "@/types/auth";
-import type { KimiQuotaRow } from "@/types/quota";
+import type { AuthFile } from "../../types/auth.ts";
+import type { KimiQuotaRow } from "../../types/quota.ts";
 
-import { apiFetch } from "@/lib/quota/api-client";
+import { apiFetch } from "./api-client.ts";
 import {
   getApiCallErrorMessage,
   normalizeApiCallEnvelope,
   parseJsonMaybe,
-} from "@/lib/quota/upstream";
+} from "./upstream.ts";
 
 function toInt(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
@@ -109,7 +109,7 @@ function toKimiUsageRow(data: Record<string, unknown>, fallbackLabel: string): K
   };
 }
 
-function buildKimiQuotaRows(payload: Record<string, unknown>): KimiQuotaRow[] {
+export function buildKimiQuotaRows(payload: Record<string, unknown>): KimiQuotaRow[] {
   const rows: KimiQuotaRow[] = [];
   const usage = payload.usage;
 
