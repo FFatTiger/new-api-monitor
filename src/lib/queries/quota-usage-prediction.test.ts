@@ -10,10 +10,15 @@ import {
 import { QUOTA_USAGE_WINDOW_OPTIONS } from "../quota/usage-config.ts";
 
 describe("quota usage prediction", () => {
-  it("writes first snapshot and throttles unchanged snapshots for one minute", () => {
+  it("writes first snapshot and throttles unchanged snapshots for five minutes by default", () => {
     assert.equal(shouldWriteQuotaSnapshot(null, { sampledAt: 1_000, resetTime: "a" }), true);
-    assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 950, resetTime: "a" }, { sampledAt: 1_000, resetTime: "a" }), false);
-    assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 939, resetTime: "a" }, { sampledAt: 1_000, resetTime: "a" }), true);
+    assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 701, resetTime: "a" }, { sampledAt: 1_000, resetTime: "a" }), false);
+    assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 700, resetTime: "a" }, { sampledAt: 1_000, resetTime: "a" }), true);
+  });
+
+  it("allows the snapshot interval to be configured for tests and deployments", () => {
+    assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 900, resetTime: "a" }, { sampledAt: 1_000, resetTime: "a" }, 120), false);
+    assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 880, resetTime: "a" }, { sampledAt: 1_000, resetTime: "a" }, 120), true);
   });
 
   it("writes immediately when reset time changes meaningfully", () => {
@@ -21,9 +26,10 @@ describe("quota usage prediction", () => {
     assert.equal(shouldWriteQuotaSnapshot({ sampledAt: 990, resetTime: "1781138161" }, { sampledAt: 1_000, resetTime: "1781138162" }), false);
   });
 
-  it("retains one day of minute snapshots plus sampling buffer", () => {
+  it("retains one day of snapshots plus sampling buffer", () => {
     const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
-    assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 60 + 60);
+    assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 60 + 300);
+    assert.equal(getQuotaSnapshotRetentionSeconds(120), maxWindowMinutes * 60 + 120);
   });
 
   it("prefers the oldest snapshot inside the selected window as the baseline", () => {

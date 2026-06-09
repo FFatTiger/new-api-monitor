@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  DEFAULT_QUOTA_SNAPSHOT_INTERVAL_SECONDS,
   DEFAULT_QUOTA_USAGE_WINDOW_MINUTES,
+  getQuotaSnapshotIntervalSecondsFromEnv,
+  normalizeQuotaSnapshotIntervalSeconds,
   normalizeQuotaUsageWindowMinutes,
   parseQuotaUsageGroups,
   QUOTA_USAGE_WINDOW_OPTIONS,
@@ -35,5 +38,20 @@ describe("quota usage config", () => {
     assert.equal(normalizeQuotaUsageWindowMinutes("1440"), 1440);
     assert.equal(normalizeQuotaUsageWindowMinutes("15"), 180);
     assert.equal(normalizeQuotaUsageWindowMinutes(undefined), 180);
+  });
+
+  it("normalizes quota snapshot interval seconds with a five minute default", () => {
+    assert.equal(DEFAULT_QUOTA_SNAPSHOT_INTERVAL_SECONDS, 300);
+    assert.equal(normalizeQuotaSnapshotIntervalSeconds("60"), 60);
+    assert.equal(normalizeQuotaSnapshotIntervalSeconds("300"), 300);
+    assert.equal(normalizeQuotaSnapshotIntervalSeconds("0"), 300);
+    assert.equal(normalizeQuotaSnapshotIntervalSeconds("bad"), 300);
+    assert.equal(getQuotaSnapshotIntervalSecondsFromEnv({ QUOTA_SNAPSHOT_INTERVAL_SECONDS: "120" }), 120);
+    assert.equal(
+      getQuotaSnapshotIntervalSecondsFromEnv({
+        NEW_API_MONITOR_QUOTA_SNAPSHOT_INTERVAL_SECONDS: "180",
+      }),
+      180,
+    );
   });
 });

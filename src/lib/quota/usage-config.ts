@@ -2,6 +2,7 @@ import type { ProviderType } from "@/types/quota";
 
 export type QuotaUsageGroupMap = Partial<Record<ProviderType, number[]>>;
 
+export const DEFAULT_QUOTA_SNAPSHOT_INTERVAL_SECONDS = 300;
 export const DEFAULT_QUOTA_USAGE_WINDOW_MINUTES = 180;
 
 export const QUOTA_USAGE_WINDOW_OPTIONS = [
@@ -28,6 +29,14 @@ export function normalizeQuotaUsageWindowMinutes(value: unknown) {
   return QUOTA_USAGE_WINDOW_OPTIONS.some((option) => option.minutes === numeric)
     ? numeric
     : DEFAULT_QUOTA_USAGE_WINDOW_MINUTES;
+}
+
+export function normalizeQuotaSnapshotIntervalSeconds(value: unknown) {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(numeric)) return DEFAULT_QUOTA_SNAPSHOT_INTERVAL_SECONDS;
+
+  const seconds = Math.floor(numeric);
+  return seconds > 0 ? seconds : DEFAULT_QUOTA_SNAPSHOT_INTERVAL_SECONDS;
 }
 
 export function parseQuotaUsageGroups(value: unknown): QuotaUsageGroupMap {
@@ -58,4 +67,10 @@ export function parseQuotaUsageGroups(value: unknown): QuotaUsageGroupMap {
 
 export function getQuotaUsageGroupsFromEnv() {
   return parseQuotaUsageGroups(process.env.QUOTA_USAGE_GROUPS || process.env.NEW_API_MONITOR_QUOTA_USAGE_GROUPS || "");
+}
+
+export function getQuotaSnapshotIntervalSecondsFromEnv(env: Record<string, string | undefined> = process.env) {
+  return normalizeQuotaSnapshotIntervalSeconds(
+    env.QUOTA_SNAPSHOT_INTERVAL_SECONDS || env.NEW_API_MONITOR_QUOTA_SNAPSHOT_INTERVAL_SECONDS,
+  );
 }

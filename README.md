@@ -63,6 +63,8 @@ docker run --rm -p 31891:31891 \
 - `NEW_API_MONITOR_API_BASE_URL`
 - `NEW_API_MONITOR_API_MANAGEMENT_KEY`
 - `NEW_API_MONITOR_PORT`，默认 `31891`
+- `NEW_API_MONITOR_QUOTA_USAGE_GROUPS`，例如 `codex=8,17;claude=12`
+- `NEW_API_MONITOR_QUOTA_SNAPSHOT_INTERVAL_SECONDS`，quota 后台采样/快照间隔，默认 `300`
 
 如果和 `new-api` 的 `postgres` 在同一个 Docker network / stack，可使用类似：
 

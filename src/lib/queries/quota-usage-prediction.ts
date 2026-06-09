@@ -1,9 +1,13 @@
 import { query, withClient } from "../db.ts";
-import { getQuotaUsageGroupsFromEnv, QUOTA_USAGE_WINDOW_OPTIONS, type QuotaUsageGroupMap } from "../quota/usage-config.ts";
+import {
+  getQuotaSnapshotIntervalSecondsFromEnv,
+  getQuotaUsageGroupsFromEnv,
+  QUOTA_USAGE_WINDOW_OPTIONS,
+  type QuotaUsageGroupMap,
+} from "../quota/usage-config.ts";
 import type { ProviderQuotaSnapshotInput } from "../quota/usage-aggregation.ts";
 import type { ProviderType, QuotaUsagePredictionRow } from "../../types/quota.ts";
 
-const SNAPSHOT_INTERVAL_SECONDS = 60;
 const SHANGHAI_OFFSET_SECONDS = 8 * 60 * 60;
 const RESET_TIME_DRIFT_TOLERANCE_SECONDS = 60;
 
@@ -120,15 +124,19 @@ export function selectQuotaBaselineSnapshot(latest: LatestSnapshot | null, oldes
   return isUsableBaseline(latest, beforeWindow) ? beforeWindow : null;
 }
 
-export function shouldWriteQuotaSnapshot(previous: Pick<LatestSnapshot, "sampledAt" | "resetTime"> | null, next: { sampledAt: number; resetTime: string | number | null }) {
+export function shouldWriteQuotaSnapshot(
+  previous: Pick<LatestSnapshot, "sampledAt" | "resetTime"> | null,
+  next: { sampledAt: number; resetTime: string | number | null },
+  intervalSeconds = getQuotaSnapshotIntervalSecondsFromEnv(),
+) {
   if (!previous) return true;
   if (!isSameResetWindow(previous.resetTime, next.resetTime)) return true;
-  return next.sampledAt - previous.sampledAt >= SNAPSHOT_INTERVAL_SECONDS;
+  return next.sampledAt - previous.sampledAt >= intervalSeconds;
 }
 
-export function getQuotaSnapshotRetentionSeconds() {
+export function getQuotaSnapshotRetentionSeconds(intervalSeconds = getQuotaSnapshotIntervalSecondsFromEnv()) {
   const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
-  return maxWindowMinutes * 60 + SNAPSHOT_INTERVAL_SECONDS;
+  return maxWindowMinutes * 60 + intervalSeconds;
 }
 
 export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePredictionRow {
@@ -191,10 +199,14 @@ export async function ensureQuotaSnapshotTable() {
   await query(`CREATE INDEX IF NOT EXISTS idx_quota_snapshots_sampled_at ON quota_snapshots (sampled_at DESC)`);
 }
 
-export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput[], nowSeconds = Math.floor(Date.now() / 1000)) {
+export async function recordQuotaSnapshots(
+  snapshots: ProviderQuotaSnapshotInput[],
+  nowSeconds = Math.floor(Date.now() / 1000),
+  intervalSeconds = getQuotaSnapshotIntervalSecondsFromEnv(),
+) {
   await ensureQuotaSnapshotTable();
   if (!snapshots.length) {
-    await pruneQuotaSnapshots(nowSeconds);
+    await pruneQuotaSnapshots(nowSeconds, intervalSeconds);
     return { inserted: 0 };
   }
 
@@ -210,7 +222,7 @@ export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput
         ? { sampledAt: toNumber(latestResult.rows[0].sampled_at), resetTime: latestResult.rows[0].reset_time }
         : null;
 
-      if (!shouldWriteQuotaSnapshot(latest, { sampledAt: nowSeconds, resetTime: snapshot.resetTime })) continue;
+      if (!shouldWriteQuotaSnapshot(latest, { sampledAt: nowSeconds, resetTime: snapshot.resetTime }, intervalSeconds)) continue;
 
       await client.query(
         `INSERT INTO quota_snapshots (provider, remaining_percent, used_percent, reset_time, sampled_at) VALUES ($1, $2, $3, $4, $5)`,
@@ -219,16 +231,21 @@ export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput
       inserted += 1;
     }
 
-    await client.query(`DELETE FROM quota_snapshots WHERE sampled_at < $1`, [nowSeconds - getQuotaSnapshotRetentionSeconds()]);
+    await client.query(`DELETE FROM quota_snapshots WHERE sampled_at < $1`, [
+      nowSeconds - getQuotaSnapshotRetentionSeconds(intervalSeconds),
+    ]);
   });
 
   return { inserted };
 }
 
-export async function pruneQuotaSnapshots(nowSeconds = Math.floor(Date.now() / 1000)) {
+export async function pruneQuotaSnapshots(
+  nowSeconds = Math.floor(Date.now() / 1000),
+  intervalSeconds = getQuotaSnapshotIntervalSecondsFromEnv(),
+) {
   await ensureQuotaSnapshotTable();
   const result = await query(`DELETE FROM quota_snapshots WHERE sampled_at < $1`, [
-    nowSeconds - getQuotaSnapshotRetentionSeconds(),
+    nowSeconds - getQuotaSnapshotRetentionSeconds(intervalSeconds),
   ]);
   return { deleted: result.rowCount ?? 0 };
 }

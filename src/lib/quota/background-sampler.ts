@@ -4,13 +4,13 @@ import type { ProviderType } from "../../types/quota.ts";
 import { upsertQuotaLatestRows, type QuotaLatestInput, type QuotaLatestRow } from "../queries/quota-latest.ts";
 import { recordQuotaSnapshots } from "../queries/quota-usage-prediction.ts";
 import { getQuotaFetchSkipReason } from "./fetch-policy.ts";
+import { getQuotaSnapshotIntervalSecondsFromEnv } from "./usage-config.ts";
 import { aggregateProviderQuotaSnapshot } from "./usage-aggregation.ts";
 import { fetchQuotaForAuthFileOnServer } from "./server-fetch.ts";
 import { fetchBackendAuthFileContent, listServerAuthFiles } from "./server-auth-files.ts";
 import { fetchBackendUsageStats, type AuthIndexUsageStats } from "./usage-stats.ts";
 import { resolveProviderType } from "./upstream.ts";
 
-const QUOTA_SAMPLER_INTERVAL_MS = 60_000;
 const MAX_CONCURRENT_QUOTA_REQUESTS = 3;
 
 type SamplerState = {
@@ -116,7 +116,7 @@ export function startQuotaBackgroundSampler(options: SamplerOptions = {}) {
   if (state.started) return state;
 
   const logger = options.logger || console;
-  const intervalMs = options.intervalMs || QUOTA_SAMPLER_INTERVAL_MS;
+  const intervalMs = options.intervalMs || getQuotaSnapshotIntervalSecondsFromEnv() * 1000;
   const runImmediately = options.runImmediately ?? true;
 
   const run = async () => {
