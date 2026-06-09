@@ -2,7 +2,7 @@
 
 import { ProviderIcon } from "@/components/quota/provider-icon";
 import { QUOTA_USAGE_WINDOW_OPTIONS } from "@/lib/quota/usage-config";
-import { formatPredictionExhaustionLabel } from "@/lib/quota/usage-presentation";
+import { formatPredictionExhaustionLabel, shouldWarnPredictionBeforeReset } from "@/lib/quota/usage-presentation";
 import type { ProviderFilter, ProviderType, QuotaUsagePredictionRow } from "@/types/quota";
 
 const providerLabels: Record<Exclude<ProviderType, "unknown">, string> = {
@@ -26,18 +26,24 @@ function getEtaLabel(row: QuotaUsagePredictionRow) {
 }
 
 function PredictionChip({ row }: { row: QuotaUsagePredictionRow }) {
-  const positive = row.status === "ready" || row.status === "safe_until_reset";
+  const warning = shouldWarnPredictionBeforeReset(row.status, row.exhaustAt, row.resetTime);
+  const positive = row.status === "ready";
 
   return (
     <div
-      className="flex min-w-0 items-center gap-2 rounded-full bg-[var(--background-elevated)] px-2.5 py-1.5 text-[0.72rem] shadow-[0_0_0_1px_var(--surface-ring-soft)]"
+      className={[
+        "flex min-w-0 items-center gap-2 rounded-full border bg-[var(--background-elevated)] px-2.5 py-1.5 text-[0.72rem]",
+        warning ? "border-red-500/75 shadow-[0_0_0_1px_rgba(239,68,68,0.32)]" : "border-transparent shadow-[0_0_0_1px_var(--surface-ring-soft)]",
+      ].join(" ")}
       title={`${getProviderLabel(row.provider)} · ${getEtaLabel(row)}`}
     >
       <div className="shrink-0">
         <ProviderIcon type={row.provider} />
       </div>
       <span className="font-medium text-[var(--foreground)]">{getProviderLabel(row.provider)}</span>
-      <span className={["ds-mono", positive ? "text-emerald-500" : "text-[var(--foreground-faint)]"].join(" ")}>{getEtaLabel(row)}</span>
+      <span className={["ds-mono", warning ? "text-red-500" : positive ? "text-emerald-500" : "text-[var(--foreground-faint)]"].join(" ")}>
+        {getEtaLabel(row)}
+      </span>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { formatPredictionDurationMinutes, formatPredictionExhaustionLabel } from "./usage-presentation.ts";
+import { formatPredictionDurationMinutes, formatPredictionExhaustionLabel, shouldWarnPredictionBeforeReset } from "./usage-presentation.ts";
 
 describe("quota usage presentation", () => {
   it("formats prediction duration with compact D H M units", () => {
@@ -19,8 +19,15 @@ describe("quota usage presentation", () => {
     assert.equal(formatPredictionExhaustionLabel("ready", 35), "预计 35M 耗尽");
     assert.equal(formatPredictionExhaustionLabel("no_snapshot", null), "等待采样");
     assert.equal(formatPredictionExhaustionLabel("no_recent_usage", null), "暂无趋势");
-    assert.equal(formatPredictionExhaustionLabel("safe_until_reset", null), "重置前安全");
     assert.equal(formatPredictionExhaustionLabel("exhausted", 0), "已耗尽");
     assert.equal(formatPredictionExhaustionLabel("unconfigured", null), "未配置");
+  });
+
+  it("warns when predicted exhaustion is before the next reset", () => {
+    assert.equal(shouldWarnPredictionBeforeReset("ready", 1_500, "2000"), true);
+    assert.equal(shouldWarnPredictionBeforeReset("ready", 1_500, "2000000"), true);
+    assert.equal(shouldWarnPredictionBeforeReset("ready", 2_500, "2000"), false);
+    assert.equal(shouldWarnPredictionBeforeReset("no_recent_usage", null, "2000"), false);
+    assert.equal(shouldWarnPredictionBeforeReset("ready", 1_500, null), false);
   });
 });

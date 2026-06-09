@@ -114,6 +114,12 @@ function isUsableBaseline(latest: LatestSnapshot, baseline: LatestSnapshot | nul
   return baseline.usedPercent <= latest.usedPercent;
 }
 
+export function selectQuotaBaselineSnapshot(latest: LatestSnapshot | null, oldestInWindow: LatestSnapshot | null, beforeWindow: LatestSnapshot | null) {
+  if (!latest) return null;
+  if (isUsableBaseline(latest, oldestInWindow)) return oldestInWindow;
+  return isUsableBaseline(latest, beforeWindow) ? beforeWindow : null;
+}
+
 export function shouldWriteQuotaSnapshot(previous: Pick<LatestSnapshot, "sampledAt" | "resetTime"> | null, next: { sampledAt: number; resetTime: string | number | null }) {
   if (!previous) return true;
   if (!isSameResetWindow(previous.resetTime, next.resetTime)) return true;
@@ -161,16 +167,6 @@ export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePre
   const percentPerMinute = deltaUsedPercent / deltaMinutes;
   const minutesLeft = Math.max(0, Math.round(input.latestRemainingPercent / percentPerMinute));
   const exhaustAt = input.nowSeconds + minutesLeft * 60;
-  const resetSeconds = parseResetTimeSeconds(input.resetTime);
-
-  if (resetSeconds !== null && resetSeconds > input.nowSeconds && exhaustAt >= resetSeconds) {
-    return {
-      ...base,
-      minutesLeft: null,
-      exhaustAt: null,
-      status: "safe_until_reset",
-    };
-  }
 
   return {
     ...base,
@@ -229,20 +225,6 @@ export async function recordQuotaSnapshots(snapshots: ProviderQuotaSnapshotInput
 async function getBaselineSnapshot(provider: ProviderType, latest: LatestSnapshot | null, windowStart: number) {
   if (!latest) return null;
 
-  const beforeWindowResult = await query<SnapshotDbRow>(
-    `
-      SELECT sampled_at, reset_time, remaining_percent, used_percent
-      FROM quota_snapshots
-      WHERE provider = $1
-        AND sampled_at <= $2::bigint
-      ORDER BY sampled_at DESC
-      LIMIT 1
-    `,
-    [provider, windowStart],
-  );
-  const beforeWindow = mapSnapshot(beforeWindowResult.rows[0]);
-  if (isUsableBaseline(latest, beforeWindow)) return beforeWindow;
-
   const oldestInWindowResult = await query<SnapshotDbRow>(
     `
       SELECT sampled_at, reset_time, remaining_percent, used_percent
@@ -256,7 +238,21 @@ async function getBaselineSnapshot(provider: ProviderType, latest: LatestSnapsho
     [provider, windowStart, latest.sampledAt],
   );
   const oldestInWindow = mapSnapshot(oldestInWindowResult.rows[0]);
-  return isUsableBaseline(latest, oldestInWindow) ? oldestInWindow : null;
+
+  const beforeWindowResult = await query<SnapshotDbRow>(
+    `
+      SELECT sampled_at, reset_time, remaining_percent, used_percent
+      FROM quota_snapshots
+      WHERE provider = $1
+        AND sampled_at <= $2::bigint
+      ORDER BY sampled_at DESC
+      LIMIT 1
+    `,
+    [provider, windowStart],
+  );
+  const beforeWindow = mapSnapshot(beforeWindowResult.rows[0]);
+
+  return selectQuotaBaselineSnapshot(latest, oldestInWindow, beforeWindow);
 }
 
 export async function getQuotaUsagePredictions(

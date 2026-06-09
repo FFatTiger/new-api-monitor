@@ -97,8 +97,7 @@ export type QuotaUsagePredictionStatus =
   | "unconfigured"
   | "no_snapshot"
   | "no_recent_usage"
-  | "exhausted"
-  | "safe_until_reset";
+  | "exhausted";
 
 export interface QuotaUsagePredictionRow {
   provider: ProviderType;

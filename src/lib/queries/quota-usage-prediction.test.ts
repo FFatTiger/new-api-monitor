@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildQuotaUsagePrediction,
   getQuotaSnapshotRetentionSeconds,
+  selectQuotaBaselineSnapshot,
   shouldWriteQuotaSnapshot,
 } from "./quota-usage-prediction.ts";
 import { QUOTA_USAGE_WINDOW_OPTIONS } from "../quota/usage-config.ts";
@@ -23,6 +24,14 @@ describe("quota usage prediction", () => {
   it("retains one day of minute snapshots plus sampling buffer", () => {
     const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
     assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 60 + 60);
+  });
+
+  it("prefers the oldest snapshot inside the selected window as the baseline", () => {
+    const latest = { sampledAt: 10_000, resetTime: "20000", remainingPercent: 45, usedPercent: 55 };
+    const beforeWindow = { sampledAt: 1_000, resetTime: "20000", remainingPercent: 52, usedPercent: 48 };
+    const oldestInWindow = { sampledAt: 8_000, resetTime: "20000", remainingPercent: 48, usedPercent: 52 };
+
+    assert.deepEqual(selectQuotaBaselineSnapshot(latest, oldestInWindow, beforeWindow), oldestInWindow);
   });
 
   it("builds an exhaustion estimate from selected-window snapshot percent slope", () => {
@@ -48,7 +57,7 @@ describe("quota usage prediction", () => {
     assert.equal(row.exhaustAt, 433_000);
   });
 
-  it("marks a provider safe when estimated exhaustion is after reset", () => {
+  it("keeps the exhaustion estimate even when it is after reset", () => {
     const row = buildQuotaUsagePrediction({
       provider: "codex",
       channelIds: [8],
@@ -65,9 +74,9 @@ describe("quota usage prediction", () => {
       nowSeconds: 1_000,
     });
 
-    assert.equal(row.status, "safe_until_reset");
-    assert.equal(row.minutesLeft, null);
-    assert.equal(row.exhaustAt, null);
+    assert.equal(row.status, "ready");
+    assert.equal(row.minutesLeft, 1000);
+    assert.equal(row.exhaustAt, 61_000);
   });
 
   it("reports no trend when the selected window has no percent increase", () => {
