@@ -2,6 +2,16 @@ import type { ProviderType } from "@/types/quota";
 
 export type QuotaUsageGroupMap = Partial<Record<ProviderType, number[]>>;
 
+export const DEFAULT_QUOTA_USAGE_WINDOW_MINUTES = 360;
+
+export const QUOTA_USAGE_WINDOW_OPTIONS = [
+  { minutes: 60, label: "60 分钟" },
+  { minutes: 180, label: "3 小时" },
+  { minutes: 360, label: "6 小时" },
+  { minutes: 720, label: "12 小时" },
+  { minutes: 1440, label: "1 天" },
+] as const;
+
 const validProviders = new Set<ProviderType>([
   "antigravity",
   "claude",
@@ -12,6 +22,13 @@ const validProviders = new Set<ProviderType>([
   "xai",
   "zai",
 ]);
+
+export function normalizeQuotaUsageWindowMinutes(value: unknown) {
+  const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  return QUOTA_USAGE_WINDOW_OPTIONS.some((option) => option.minutes === numeric)
+    ? numeric
+    : DEFAULT_QUOTA_USAGE_WINDOW_MINUTES;
+}
 
 export function parseQuotaUsageGroups(value: unknown): QuotaUsageGroupMap {
   if (typeof value !== "string" || !value.trim()) return {};

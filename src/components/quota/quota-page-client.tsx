@@ -11,6 +11,7 @@ import { useQuota } from "@/hooks/useQuota";
 import { normalizeFraction } from "@/lib/quota/normalize";
 import { getProviderType } from "@/lib/quota/providers";
 import { sortQuotaFiles } from "@/lib/quota/sort-policy";
+import { DEFAULT_QUOTA_USAGE_WINDOW_MINUTES } from "@/lib/quota/usage-config";
 import type { ProviderFilter, QuotaState } from "@/types/quota";
 
 const providerTabs: Array<{ key: ProviderFilter; label: string }> = [
@@ -160,10 +161,11 @@ export function QuotaPageClient() {
   const [selectedProvider, setSelectedProvider] = useState<ProviderFilter>("all");
   const [sortOption, setSortOption] = useState<SortOption>("default");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [usageWindowMinutes, setUsageWindowMinutes] = useState(DEFAULT_QUOTA_USAGE_WINDOW_MINUTES);
 
   useEffect(() => {
-    void loadQuotaPredictions();
-  }, [loadQuotaPredictions, quotas]);
+    void loadQuotaPredictions(usageWindowMinutes);
+  }, [loadQuotaPredictions, quotas, usageWindowMinutes]);
 
   const providerCounts = useMemo(() => {
     const counts: Record<ProviderFilter, number> = {
@@ -347,8 +349,10 @@ export function QuotaPageClient() {
         <QuotaPredictionPanel
           predictions={quotaPredictions}
           selectedProvider={selectedProvider}
+          windowMinutes={usageWindowMinutes}
           loading={predictionLoading}
           error={predictionError}
+          onWindowMinutesChange={setUsageWindowMinutes}
         />
 
         {globalError ? (

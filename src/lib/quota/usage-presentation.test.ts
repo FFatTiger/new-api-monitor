@@ -18,7 +18,6 @@ describe("quota usage presentation", () => {
     assert.equal(formatPredictionExhaustionLabel("ready", 2 * 1440 + 4 * 60), "预计 2D 4H 耗尽");
     assert.equal(formatPredictionExhaustionLabel("ready", 35), "预计 35M 耗尽");
     assert.equal(formatPredictionExhaustionLabel("no_snapshot", null), "等待采样");
-    assert.equal(formatPredictionExhaustionLabel("calibrating", null), "等待校准");
     assert.equal(formatPredictionExhaustionLabel("no_recent_usage", null), "暂无趋势");
     assert.equal(formatPredictionExhaustionLabel("safe_until_reset", null), "重置前安全");
     assert.equal(formatPredictionExhaustionLabel("exhausted", 0), "已耗尽");

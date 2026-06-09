@@ -96,7 +96,6 @@ export type QuotaUsagePredictionStatus =
   | "ready"
   | "unconfigured"
   | "no_snapshot"
-  | "calibrating"
   | "no_recent_usage"
   | "exhausted"
   | "safe_until_reset";

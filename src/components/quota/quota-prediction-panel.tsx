@@ -1,6 +1,7 @@
 "use client";
 
 import { ProviderIcon } from "@/components/quota/provider-icon";
+import { QUOTA_USAGE_WINDOW_OPTIONS } from "@/lib/quota/usage-config";
 import { formatPredictionExhaustionLabel } from "@/lib/quota/usage-presentation";
 import type { ProviderFilter, ProviderType, QuotaUsagePredictionRow } from "@/types/quota";
 
@@ -44,13 +45,17 @@ function PredictionChip({ row }: { row: QuotaUsagePredictionRow }) {
 export function QuotaPredictionPanel({
   predictions,
   selectedProvider,
+  windowMinutes,
   loading,
   error,
+  onWindowMinutesChange,
 }: {
   predictions: QuotaUsagePredictionRow[];
   selectedProvider: ProviderFilter;
+  windowMinutes: number;
   loading: boolean;
   error: string | null;
+  onWindowMinutesChange: (value: number) => void;
 }) {
   const rows = selectedProvider === "all" ? predictions : predictions.filter((row) => row.provider === selectedProvider);
 
@@ -58,6 +63,20 @@ export function QuotaPredictionPanel({
     <section className="ds-panel px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="mr-1 shrink-0 text-[0.78rem] font-semibold text-[var(--foreground)]">额度预测</h2>
+        <div className="shrink-0">
+          <select
+            value={windowMinutes}
+            onChange={(event) => onWindowMinutesChange(Number(event.target.value))}
+            className="ds-compact-control h-8 min-w-[98px] appearance-none pr-8 text-[0.72rem]"
+            aria-label="额度预测速度窗口"
+          >
+            {QUOTA_USAGE_WINDOW_OPTIONS.map((option) => (
+              <option key={option.minutes} value={option.minutes}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {error ? <span className="rounded-full bg-red-500/10 px-2.5 py-1.5 text-[0.72rem] text-red-500">{error}</span> : null}
         {!error && rows.length === 0 ? (
