@@ -1,17 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { getQuotaUsagePredictions } from "@/lib/queries/quota-usage-prediction";
-import { normalizeQuotaUsageWindowMinutes } from "@/lib/quota/usage-config";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const windowMinutes = normalizeQuotaUsageWindowMinutes(request.nextUrl.searchParams.get("windowMinutes"));
-    const predictions = await getQuotaUsagePredictions(windowMinutes);
+    const predictions = await getQuotaUsagePredictions();
     return NextResponse.json(
-      { predictions, windowMinutes },
+      { predictions },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
   } catch (error: unknown) {

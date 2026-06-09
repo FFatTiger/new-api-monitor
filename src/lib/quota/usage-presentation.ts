@@ -16,6 +16,7 @@ export function formatPredictionDurationMinutes(value: number | null) {
 export function formatPredictionExhaustionLabel(status: string, minutesLeft: number | null) {
   if (status === "unconfigured") return "未配置";
   if (status === "no_snapshot") return "等待采样";
+  if (status === "calibrating") return "等待校准";
   if (status === "no_recent_usage") return "暂无趋势";
   if (status === "exhausted") return "已耗尽";
   if (status === "safe_until_reset") return "重置前安全";

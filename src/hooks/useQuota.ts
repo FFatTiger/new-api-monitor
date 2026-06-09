@@ -9,7 +9,6 @@ import { apiFetch } from "@/lib/quota/api-client";
 import { clearQuotaCache, CACHE_KEY, loadQuotaCache, saveQuotaCache } from "@/lib/quota/cache";
 import { getQuotaFetchSkipReason } from "@/lib/quota/fetch-policy";
 import { fetchQuotaForFile, getProviderType } from "@/lib/quota/providers";
-import { DEFAULT_QUOTA_USAGE_WINDOW_MINUTES } from "@/lib/quota/usage-config";
 
 type UsageStatsResponse = {
   byAuthIndex?: Record<string, { success: number; failure: number }>;
@@ -106,12 +105,12 @@ export const useQuota = () => {
   const [predictionLoading, setPredictionLoading] = useState(false);
   const [predictionError, setPredictionError] = useState<string | null>(null);
 
-  const loadQuotaPredictions = useCallback(async (windowMinutes = DEFAULT_QUOTA_USAGE_WINDOW_MINUTES) => {
+  const loadQuotaPredictions = useCallback(async () => {
     setPredictionLoading(true);
     setPredictionError(null);
 
     try {
-      const response = await apiFetch(`/quota-usage-prediction?windowMinutes=${encodeURIComponent(String(windowMinutes))}`);
+      const response = await apiFetch("/quota-usage-prediction");
       const payload = (await response.json()) as PredictionResponse;
       if (!response.ok) {
         throw new Error(payload.error || "Failed to fetch quota usage predictions");
