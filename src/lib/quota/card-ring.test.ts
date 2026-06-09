@@ -76,19 +76,19 @@ describe("weekly quota ring data", () => {
     });
   });
 
-  it("uses the Z.ai tokens limit as the top-right quota summary", () => {
+  it("uses the Z.ai weekly limit as the top-right quota summary", () => {
     const data: QuotaData = {
       windows: [
-        { id: "time-limit", label: "Time", remainingPercent: 90 },
-        { id: "tokens-limit", label: "Tokens", remainingPercent: 24.7 },
+        { id: "tokens-limit", label: "5小时额度", remainingPercent: 91 },
+        { id: "requests-limit", label: "周额度", remainingPercent: 80 },
       ],
     };
 
     assert.deepEqual(getWeeklyQuotaRingData("zai", data), {
-      percent: 25,
-      label: "Tokens",
-      valueLabel: "25%",
-      tone: "amber",
+      percent: 80,
+      label: "周额度",
+      valueLabel: "80%",
+      tone: "emerald",
     });
   });
 });

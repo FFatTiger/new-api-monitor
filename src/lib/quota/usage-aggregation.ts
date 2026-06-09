@@ -41,10 +41,6 @@ function pickWindow(provider: ProviderType, windows: RateLimitWindow[]) {
     return windows.find(isWeeklyWindow) || windows[1] || windows[0];
   }
 
-  if (provider === "zai") {
-    return windows.find((windowData) => String(windowData.id || "").toLowerCase() === "tokens-limit") || windows.find(isWeeklyWindow) || windows[0];
-  }
-
   if (provider === "minimax") {
     return windows.find(isWeeklyWindow) || windows[0];
   }

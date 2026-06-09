@@ -34,6 +34,21 @@ describe("quota usage aggregation", () => {
     });
   });
 
+  it("uses the Z.ai weekly window for quota prediction instead of the short token window", () => {
+    const snapshot = getQuotaWindowSnapshot("zai", {
+      windows: [
+        { id: "tokens-limit", label: "5小时额度", remainingPercent: 91, usedPercent: 9, resetTime: "short-reset" },
+        { id: "requests-limit", label: "周额度", remainingPercent: 80, usedPercent: 20, resetTime: "weekly-reset" },
+      ],
+    });
+
+    assert.deepEqual(snapshot, {
+      remainingPercent: 80,
+      usedPercent: 20,
+      resetTime: "weekly-reset",
+    });
+  });
+
   it("falls back to remaining percent derived from used percent", () => {
     const snapshot = getQuotaWindowSnapshot("zai", {
       windows: [{ id: "tokens-limit", usedPercent: 42, resetTime: 123 }],

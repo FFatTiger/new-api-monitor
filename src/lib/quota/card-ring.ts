@@ -62,7 +62,6 @@ function findMiniMaxWindow(windows: RateLimitWindow[]) {
 
 function findZaiWindow(windows: RateLimitWindow[]) {
   return (
-    windows.find((windowData) => String(windowData.id || "").toLowerCase() === "tokens-limit") ||
     findWeeklyWindow(windows) ||
     windows[0]
   );
