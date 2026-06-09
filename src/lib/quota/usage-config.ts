@@ -2,7 +2,7 @@ import type { ProviderType } from "@/types/quota";
 
 export type QuotaUsageGroupMap = Partial<Record<ProviderType, number[]>>;
 
-export const DEFAULT_QUOTA_USAGE_WINDOW_MINUTES = 360;
+export const DEFAULT_QUOTA_USAGE_WINDOW_MINUTES = 180;
 
 export const QUOTA_USAGE_WINDOW_OPTIONS = [
   { minutes: 60, label: "60 分钟" },
