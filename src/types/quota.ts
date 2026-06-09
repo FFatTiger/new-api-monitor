@@ -92,7 +92,7 @@ export interface QuotaData {
   endpointRegion?: string | null;
 }
 
-export type QuotaUsagePredictionStatus = "ready" | "unconfigured" | "no_snapshot" | "no_recent_usage" | "exhausted";
+export type QuotaUsagePredictionStatus = "ready" | "unconfigured" | "no_snapshot" | "no_recent_usage" | "exhausted" | "safe_until_reset";
 
 export interface QuotaUsagePredictionRow {
   provider: ProviderType;

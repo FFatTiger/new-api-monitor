@@ -18,5 +18,6 @@ export function formatPredictionExhaustionLabel(status: string, minutesLeft: num
   if (status === "no_snapshot") return "等待采样";
   if (status === "no_recent_usage") return "暂无趋势";
   if (status === "exhausted") return "已耗尽";
+  if (status === "safe_until_reset") return "重置前安全";
   return `预计 ${formatPredictionDurationMinutes(minutesLeft)} 耗尽`;
 }

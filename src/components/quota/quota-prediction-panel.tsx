@@ -26,7 +26,7 @@ function getEtaLabel(row: QuotaUsagePredictionRow) {
 }
 
 function PredictionChip({ row }: { row: QuotaUsagePredictionRow }) {
-  const ready = row.status === "ready";
+  const positive = row.status === "ready" || row.status === "safe_until_reset";
 
   return (
     <div
@@ -37,7 +37,7 @@ function PredictionChip({ row }: { row: QuotaUsagePredictionRow }) {
         <ProviderIcon type={row.provider} />
       </div>
       <span className="font-medium text-[var(--foreground)]">{getProviderLabel(row.provider)}</span>
-      <span className={["ds-mono", ready ? "text-emerald-500" : "text-[var(--foreground-faint)]"].join(" ")}>{getEtaLabel(row)}</span>
+      <span className={["ds-mono", positive ? "text-emerald-500" : "text-[var(--foreground-faint)]"].join(" ")}>{getEtaLabel(row)}</span>
     </div>
   );
 }

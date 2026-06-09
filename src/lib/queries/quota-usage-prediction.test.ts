@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildQuotaUsagePrediction,
   getQuotaSnapshotRetentionSeconds,
+  getQuotaUsageWindowStartSeconds,
   shouldWriteQuotaSnapshot,
 } from "./quota-usage-prediction.ts";
 import { QUOTA_USAGE_WINDOW_OPTIONS } from "../quota/usage-config.ts";
@@ -24,24 +25,51 @@ describe("quota usage prediction", () => {
     assert.equal(getQuotaSnapshotRetentionSeconds(), maxWindowMinutes * 60 + 5 * 60);
   });
 
-  it("builds an exhaustion estimate from today quota, used percent, and recent speed", () => {
+  it("builds an exhaustion estimate from the quota window usage basis", () => {
     const row = buildQuotaUsagePrediction({
       provider: "codex",
       channelIds: [8, 17],
       todayGptTokens: 12_000,
       todayQuota: 40_000,
+      quotaWindowUsage: 400_000,
       recentQuota: 20_000,
       windowMinutes: 60,
       latestRemainingPercent: 60,
       latestUsedPercent: 40,
-      resetTime: "week",
+      resetTime: null,
       nowSeconds: 1_000,
     });
 
     assert.equal(row.status, "ready");
     assert.equal(row.recentQuotaPerHour, 20_000);
-    assert.equal(row.minutesLeft, 180);
-    assert.equal(row.exhaustAt, 11_800);
+    assert.equal(row.minutesLeft, 1800);
+    assert.equal(row.exhaustAt, 109_000);
+  });
+
+  it("uses the weekly window start for Codex and Claude reset times", () => {
+    assert.equal(getQuotaUsageWindowStartSeconds("codex", "1781138161"), 1781138161 - 7 * 24 * 60 * 60);
+    assert.equal(getQuotaUsageWindowStartSeconds("claude", "1781138161000"), 1781138161 - 7 * 24 * 60 * 60);
+    assert.equal(getQuotaUsageWindowStartSeconds("zai", "1781138161000"), null);
+  });
+
+  it("marks a provider safe when estimated exhaustion is after reset", () => {
+    const row = buildQuotaUsagePrediction({
+      provider: "codex",
+      channelIds: [8],
+      todayGptTokens: 0,
+      todayQuota: 10_000,
+      quotaWindowUsage: 400_000,
+      recentQuota: 10_000,
+      windowMinutes: 60,
+      latestRemainingPercent: 60,
+      latestUsedPercent: 40,
+      resetTime: "2000",
+      nowSeconds: 1_000,
+    });
+
+    assert.equal(row.status, "safe_until_reset");
+    assert.equal(row.minutesLeft, null);
+    assert.equal(row.exhaustAt, null);
   });
 
   it("reports no recent usage when speed is zero", () => {
@@ -50,6 +78,7 @@ describe("quota usage prediction", () => {
       channelIds: [12],
       todayGptTokens: 0,
       todayQuota: 0,
+      quotaWindowUsage: 0,
       recentQuota: 0,
       windowMinutes: 720,
       latestRemainingPercent: 80,

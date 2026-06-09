@@ -18,6 +18,7 @@ type PredictionInput = {
   channelIds: number[];
   todayGptTokens: number;
   todayQuota: number;
+  quotaWindowUsage: number;
   recentQuota: number;
   windowMinutes: number;
   latestRemainingPercent: number | null;
@@ -47,6 +48,21 @@ function normalizeResetTime(value: unknown) {
   return normalized || null;
 }
 
+function parseResetTimeSeconds(value: string | number | null) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.floor(numeric > 1_000_000_000_000 ? numeric / 1000 : numeric);
+  }
+
+  const parsedMs = Date.parse(text);
+  if (!Number.isFinite(parsedMs)) return null;
+  return Math.floor(parsedMs / 1000);
+}
+
 function getTodayStartShanghaiSeconds(nowSeconds: number) {
   return Math.floor((nowSeconds + SHANGHAI_OFFSET_SECONDS) / 86_400) * 86_400 - SHANGHAI_OFFSET_SECONDS;
 }
@@ -66,6 +82,17 @@ export function shouldWriteQuotaSnapshot(previous: Pick<LatestSnapshot, "sampled
 export function getQuotaSnapshotRetentionSeconds() {
   const maxWindowMinutes = Math.max(...QUOTA_USAGE_WINDOW_OPTIONS.map((option) => option.minutes));
   return maxWindowMinutes * 60 + SNAPSHOT_INTERVAL_SECONDS;
+}
+
+export function getQuotaUsageWindowStartSeconds(provider: ProviderType, resetTime: string | number | null) {
+  const resetSeconds = parseResetTimeSeconds(resetTime);
+  if (!resetSeconds) return null;
+
+  if (provider === "codex" || provider === "claude") {
+    return resetSeconds - 7 * 24 * 60 * 60;
+  }
+
+  return null;
 }
 
 export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePredictionRow {
@@ -92,18 +119,29 @@ export function buildQuotaUsagePrediction(input: PredictionInput): QuotaUsagePre
   }
 
   const quotaPerMinute = input.windowMinutes > 0 ? input.recentQuota / input.windowMinutes : 0;
-  if (quotaPerMinute <= 0 || input.latestUsedPercent <= 0 || input.todayQuota <= 0) {
+  if (quotaPerMinute <= 0 || input.latestUsedPercent <= 0 || input.quotaWindowUsage <= 0) {
     return { ...base, minutesLeft: null, exhaustAt: null, status: "no_recent_usage" };
   }
 
-  const estimatedTotalQuota = input.todayQuota / (input.latestUsedPercent / 100);
+  const estimatedTotalQuota = input.quotaWindowUsage / (input.latestUsedPercent / 100);
   const remainingQuota = estimatedTotalQuota * (input.latestRemainingPercent / 100);
   const minutesLeft = Math.max(0, Math.round(remainingQuota / quotaPerMinute));
+  const exhaustAt = input.nowSeconds + minutesLeft * 60;
+  const resetSeconds = parseResetTimeSeconds(input.resetTime);
+
+  if (resetSeconds !== null && resetSeconds > input.nowSeconds && exhaustAt >= resetSeconds) {
+    return {
+      ...base,
+      minutesLeft: null,
+      exhaustAt: null,
+      status: "safe_until_reset",
+    };
+  }
 
   return {
     ...base,
     minutesLeft,
-    exhaustAt: input.nowSeconds + minutesLeft * 60,
+    exhaustAt,
     status: "ready",
   };
 }
@@ -188,38 +226,50 @@ export async function getQuotaUsagePredictions(
         } satisfies QuotaUsagePredictionRow;
       }
 
-      const [usageResult, snapshotResult] = await Promise.all([
-        query<{ today_gpt_tokens: string | number; today_quota: string | number; recent_quota: string | number }>(
-          `
-            SELECT
-              COALESCE(SUM(CASE WHEN l.created_at >= $2::bigint AND ${getGptModelSql("COALESCE(l.model_name, '')")} THEN COALESCE(l.prompt_tokens, 0) + COALESCE(l.completion_tokens, 0) ELSE 0 END), 0) AS today_gpt_tokens,
-              COALESCE(SUM(CASE WHEN l.created_at >= $2::bigint THEN COALESCE(l.quota, 0) ELSE 0 END), 0) AS today_quota,
-              COALESCE(SUM(CASE WHEN l.created_at >= $3::bigint THEN COALESCE(l.quota, 0) ELSE 0 END), 0) AS recent_quota
-            FROM logs l
-            WHERE l.channel_id = ANY($1::bigint[])
-              AND l.created_at >= LEAST($2::bigint, $3::bigint)
-          `,
-          [channelIds, todayStart, recentStart],
-        ),
-        query<{ remaining_percent: string | number | null; used_percent: string | number | null; reset_time: string | null }>(
-          `SELECT remaining_percent, used_percent, reset_time FROM quota_snapshots WHERE provider = $1 ORDER BY sampled_at DESC LIMIT 1`,
-          [provider],
-        ),
-      ]);
+      const snapshotResult = await query<{
+        remaining_percent: string | number | null;
+        used_percent: string | number | null;
+        reset_time: string | null;
+      }>(
+        `SELECT remaining_percent, used_percent, reset_time FROM quota_snapshots WHERE provider = $1 ORDER BY sampled_at DESC LIMIT 1`,
+        [provider],
+      );
+      const snapshot = snapshotResult.rows[0];
+      const normalizedResetTime = normalizeResetTime(snapshot?.reset_time);
+      const quotaWindowStart = getQuotaUsageWindowStartSeconds(provider, normalizedResetTime);
+
+      const usageResult = await query<{
+        today_gpt_tokens: string | number;
+        today_quota: string | number;
+        recent_quota: string | number;
+        quota_window_usage: string | number;
+      }>(
+        `
+          SELECT
+            COALESCE(SUM(CASE WHEN l.created_at >= $2::bigint AND ${getGptModelSql("COALESCE(l.model_name, '')")} THEN COALESCE(l.prompt_tokens, 0) + COALESCE(l.completion_tokens, 0) ELSE 0 END), 0) AS today_gpt_tokens,
+            COALESCE(SUM(CASE WHEN l.created_at >= $2::bigint THEN COALESCE(l.quota, 0) ELSE 0 END), 0) AS today_quota,
+            COALESCE(SUM(CASE WHEN l.created_at >= $3::bigint THEN COALESCE(l.quota, 0) ELSE 0 END), 0) AS recent_quota,
+            COALESCE(SUM(CASE WHEN l.created_at >= COALESCE($4::bigint, $2::bigint) THEN COALESCE(l.quota, 0) ELSE 0 END), 0) AS quota_window_usage
+          FROM logs l
+          WHERE l.channel_id = ANY($1::bigint[])
+            AND l.created_at >= LEAST($2::bigint, $3::bigint, COALESCE($4::bigint, $2::bigint))
+        `,
+        [channelIds, todayStart, recentStart, quotaWindowStart],
+      );
 
       const usage = usageResult.rows[0];
-      const snapshot = snapshotResult.rows[0];
 
       return buildQuotaUsagePrediction({
         provider,
         channelIds,
         todayGptTokens: toNumber(usage?.today_gpt_tokens),
         todayQuota: toNumber(usage?.today_quota),
+        quotaWindowUsage: toNumber(usage?.quota_window_usage),
         recentQuota: toNumber(usage?.recent_quota),
         windowMinutes,
         latestRemainingPercent: nullableNumber(snapshot?.remaining_percent),
         latestUsedPercent: nullableNumber(snapshot?.used_percent),
-        resetTime: normalizeResetTime(snapshot?.reset_time),
+        resetTime: normalizedResetTime,
         nowSeconds,
       });
     }),
