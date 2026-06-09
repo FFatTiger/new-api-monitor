@@ -34,10 +34,15 @@ describe("quota usage prediction", () => {
 
   it("prefers the oldest snapshot inside the selected window as the baseline", () => {
     const latest = { sampledAt: 10_000, resetTime: "20000", remainingPercent: 45, usedPercent: 55 };
-    const beforeWindow = { sampledAt: 1_000, resetTime: "20000", remainingPercent: 52, usedPercent: 48 };
     const oldestInWindow = { sampledAt: 8_000, resetTime: "20000", remainingPercent: 48, usedPercent: 52 };
 
-    assert.deepEqual(selectQuotaBaselineSnapshot(latest, oldestInWindow, beforeWindow), oldestInWindow);
+    assert.deepEqual(selectQuotaBaselineSnapshot(latest, oldestInWindow), oldestInWindow);
+  });
+
+  it("does not count time before the first in-window snapshot when choosing a baseline", () => {
+    const latest = { sampledAt: 10_000, resetTime: "20000", remainingPercent: 45, usedPercent: 55 };
+
+    assert.equal(selectQuotaBaselineSnapshot(latest, null), null);
   });
 
   it("builds an exhaustion estimate from selected-window snapshot percent slope", () => {
@@ -54,13 +59,35 @@ describe("quota usage prediction", () => {
       baselineUsedPercent: 37,
       baselineSampledAt: 1_000,
       resetTime: null,
-      nowSeconds: 1_000,
+      nowSeconds: 22_600,
     });
 
     assert.equal(row.status, "ready");
     assert.equal(row.recentQuotaPerHour, 5_000);
     assert.equal(row.minutesLeft, 7200);
-    assert.equal(row.exhaustAt, 433_000);
+    assert.equal(row.exhaustAt, 454_600);
+  });
+
+  it("does not add the trailing no-snapshot gap to the exhaustion estimate", () => {
+    const row = buildQuotaUsagePrediction({
+      provider: "codex",
+      channelIds: [8],
+      todayGptTokens: 0,
+      todayQuota: 10_000,
+      recentQuota: 10_000,
+      windowMinutes: 360,
+      latestRemainingPercent: 60,
+      latestUsedPercent: 40,
+      latestSampledAt: 1_000,
+      baselineUsedPercent: 30,
+      baselineSampledAt: 400,
+      resetTime: null,
+      nowSeconds: 1_600,
+    });
+
+    assert.equal(row.status, "ready");
+    assert.equal(row.exhaustAt, 4_600);
+    assert.equal(row.minutesLeft, 50);
   });
 
   it("keeps the exhaustion estimate even when it is after reset", () => {
@@ -77,12 +104,12 @@ describe("quota usage prediction", () => {
       baselineUsedPercent: 39,
       baselineSampledAt: 1_000,
       resetTime: "2000",
-      nowSeconds: 1_000,
+      nowSeconds: 2_000,
     });
 
     assert.equal(row.status, "ready");
     assert.equal(row.minutesLeft, 1000);
-    assert.equal(row.exhaustAt, 61_000);
+    assert.equal(row.exhaustAt, 62_000);
   });
 
   it("reports no trend when the selected window has no percent increase", () => {
