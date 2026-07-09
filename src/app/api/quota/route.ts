@@ -8,8 +8,8 @@ import {
   normalizeMiniMaxApiKey,
   normalizeMiniMaxRegion,
 } from "@/lib/quota/minimax";
-import { fetchGrokQuotaFromAuthContent } from "@/lib/quota/grok";
-import { buildQuotaApiCall, findRawAuthFile, type QuotaProxyRequest } from "@/lib/quota/server-proxy";
+import { buildGrokQuotaDataFromApiCallResults } from "@/lib/quota/grok";
+import { buildQuotaApiCall, findRawAuthFile, type BackendApiCall, type QuotaProxyRequest } from "@/lib/quota/server-proxy";
 import { resolveProviderType } from "@/lib/quota/upstream";
 import { isZaiAuthIndex, ZAI_USAGE_URL } from "@/lib/quota/zai";
 
@@ -22,6 +22,15 @@ const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.ZAI_API_TOKEN || "";
 const MINIMAX_API_KEY = normalizeMiniMaxApiKey(process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "");
 const MINIMAX_API_REGION = process.env.MINIMAX_API_REGION || "auto";
 const MINIMAX_API_BASE_URL = process.env.MINIMAX_API_BASE_URL || "";
+
+class BackendRequestError extends Error {
+  status: number;
+
+  constructor(status: number) {
+    super("Backend request failed");
+    this.status = status;
+  }
+}
 
 async function fetchRawAuthFiles(): Promise<RawAuthFile[]> {
   const response = await fetch(`${API_BASE_URL}/auth-files`, {
@@ -56,6 +65,26 @@ async function fetchFileContent(name: string): Promise<Record<string, unknown> |
   } catch {
     return null;
   }
+}
+
+async function callCliProxyApi(apiCall: BackendApiCall): Promise<unknown> {
+  const response = await fetch(`${API_BASE_URL}/api-call`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${API_MANAGEMENT_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(apiCall),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error("Failed quota api-call", response.status, text);
+    throw new BackendRequestError(response.status);
+  }
+
+  return response.json();
 }
 
 function publicError(status = 500) {
@@ -188,12 +217,11 @@ export async function POST(request: NextRequest) {
         return publicError(400);
       }
 
-      const fileContent = await fetchFileContent(file.name);
-      if (!fileContent) {
-        return publicError(404);
-      }
-
-      const data = await fetchGrokQuotaFromAuthContent(fileContent);
+      const [weeklyResult, monthlyResult] = await Promise.allSettled([
+        callCliProxyApi(buildQuotaApiCall({ authIndex: body.authIndex, provider: "xai", action: "xai-weekly" }, file)),
+        callCliProxyApi(buildQuotaApiCall({ authIndex: body.authIndex, provider: "xai", action: "xai-monthly" }, file)),
+      ]);
+      const data = buildGrokQuotaDataFromApiCallResults(weeklyResult, monthlyResult);
       return NextResponse.json(data, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
     }
 
@@ -205,26 +233,10 @@ export async function POST(request: NextRequest) {
       console.warn("Antigravity auth file did not contain a project id", file.name);
     }
 
-    const response = await fetch(`${API_BASE_URL}/api-call`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${API_MANAGEMENT_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(apiCall),
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      console.error("Failed quota api-call", response.status, text);
-      return publicError(response.status);
-    }
-
-    const data = await response.json();
+    const data = await callCliProxyApi(apiCall);
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
   } catch (error: unknown) {
     console.error("Failed to proxy quota request", error);
-    return publicError();
+    return publicError(error instanceof BackendRequestError ? error.status : 500);
   }
 }

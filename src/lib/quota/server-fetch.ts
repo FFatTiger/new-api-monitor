@@ -18,7 +18,7 @@ import {
   type QuotaProxyRequest,
 } from "./server-proxy.ts";
 import type { QuotaServerConfig } from "./server-auth-files.ts";
-import { fetchGrokQuotaFromAuthContent } from "./grok.ts";
+import { buildGrokQuotaDataFromApiCallResults } from "./grok.ts";
 import {
   buildAntigravityQuotaGroups,
   buildClaudeQuotaWindows,
@@ -211,21 +211,17 @@ async function fetchKimiQuotaOnServer(file: AuthFile, context: ServerQuotaFetchC
 }
 
 async function fetchGrokQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
-  if (!context.fetchFileContent) {
-    throw new Error("Server configuration missing");
-  }
-
   const rawFile = findRawAuthFile(context.rawFiles, file.authIndex);
   if (resolveProviderType(rawFile) !== "xai") {
     throw new Error("Provider mismatch");
   }
 
-  const fileContent = await context.fetchFileContent(rawFile.name);
-  if (!fileContent) {
-    throw new Error("Missing Grok auth file content");
-  }
+  const [weeklyResult, monthlyResult] = await Promise.allSettled([
+    callManagedQuotaApi({ authIndex: file.authIndex, provider: "xai", action: "xai-weekly" }, context),
+    callManagedQuotaApi({ authIndex: file.authIndex, provider: "xai", action: "xai-monthly" }, context),
+  ]);
 
-  return fetchGrokQuotaFromAuthContent(fileContent, context.fetchImpl || fetch);
+  return buildGrokQuotaDataFromApiCallResults(weeklyResult, monthlyResult);
 }
 
 async function fetchAntigravityQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {

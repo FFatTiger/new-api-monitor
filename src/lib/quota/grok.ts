@@ -2,7 +2,12 @@ import type { AuthFile } from "../../types/auth.ts";
 import type { QuotaData, RateLimitWindow } from "../../types/quota.ts";
 
 import { apiFetch } from "./api-client.ts";
-import { normalizeNumberValue, normalizeStringValue } from "./upstream.ts";
+import {
+  getApiCallErrorMessage,
+  normalizeApiCallEnvelope,
+  normalizeNumberValue,
+  normalizeStringValue,
+} from "./upstream.ts";
 
 export const GROK_USAGE_URL = "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig";
 
@@ -38,6 +43,66 @@ export type GrokBillingUsage = {
   usedPercent: number;
   remainingPercent: number;
   resetTime?: string;
+};
+
+type GrokBillingPeriod = {
+  type?: unknown;
+  start?: unknown;
+  end?: unknown;
+};
+
+type GrokProductUsage = {
+  product?: unknown;
+  usagePercent?: unknown;
+  usage_percent?: unknown;
+};
+
+type GrokBillingConfig = {
+  currentPeriod?: GrokBillingPeriod | null;
+  current_period?: GrokBillingPeriod | null;
+  creditUsagePercent?: unknown;
+  credit_usage_percent?: unknown;
+  productUsage?: GrokProductUsage[] | null;
+  product_usage?: GrokProductUsage[] | null;
+  monthlyLimit?: unknown;
+  monthly_limit?: unknown;
+  used?: unknown;
+  onDemandCap?: unknown;
+  on_demand_cap?: unknown;
+  onDemandUsed?: unknown;
+  on_demand_used?: unknown;
+  billingPeriodStart?: unknown;
+  billing_period_start?: unknown;
+  billingPeriodEnd?: unknown;
+  billing_period_end?: unknown;
+};
+
+type GrokBillingPayload = {
+  config?: GrokBillingConfig | null;
+};
+
+export type GrokBillingPeriodType = "weekly" | "monthly" | "unknown";
+
+export type GrokProductUsageSummary = {
+  product: string;
+  usagePercent: number | null;
+};
+
+export type GrokBillingSummary = {
+  periodType: GrokBillingPeriodType;
+  usagePercent: number | null;
+  periodStart?: string;
+  periodEnd?: string;
+  productUsage: GrokProductUsageSummary[];
+  monthlyLimitCents: number | null;
+  usedCents: number | null;
+  includedUsedCents: number | null;
+  onDemandCapCents: number | null;
+  onDemandUsedCents: number | null;
+  onDemandUsedPercent: number | null;
+  billingPeriodStart?: string;
+  billingPeriodEnd?: string;
+  usedPercent: number | null;
 };
 
 type ProtoScan = {
@@ -365,6 +430,289 @@ export function parseGrokRpcBillingResponse(payload: unknown): GrokBillingUsage 
     remainingPercent: normalizePercent(100 - usedPercent),
     resetTime,
   };
+}
+
+function parseGrokBillingPayload(payload: unknown): GrokBillingPayload | null {
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    if (!trimmed) return null;
+    try {
+      return parseGrokBillingPayload(JSON.parse(trimmed));
+    } catch {
+      return null;
+    }
+  }
+
+  const record = getRecord(payload);
+  return record ? (record as GrokBillingPayload) : null;
+}
+
+function grokCentValue(value: unknown) {
+  const record = getRecord(value);
+  if (record) return normalizeNumberValue(record.val);
+  return normalizeNumberValue(value);
+}
+
+function resolveGrokPeriodType(period: GenericRecord | null): GrokBillingPeriodType {
+  const rawType = normalizeStringValue(period?.type)?.toLowerCase() ?? "";
+  if (rawType.includes("weekly")) return "weekly";
+  if (rawType.includes("monthly")) return "monthly";
+  return "unknown";
+}
+
+function normalizeGrokProductUsage(productUsage: unknown, fallbackPrefix: string): GrokProductUsageSummary[] {
+  if (!Array.isArray(productUsage)) return [];
+
+  return productUsage
+    .map((item, index): GrokProductUsageSummary | null => {
+      const record = getRecord(item);
+      if (!record) return null;
+      const product = normalizeStringValue(record.product) ?? `${fallbackPrefix} ${index + 1}`;
+      const usagePercent = normalizeNumberValue(record.usagePercent ?? record.usage_percent);
+      return { product, usagePercent };
+    })
+    .filter((item): item is GrokProductUsageSummary => item !== null);
+}
+
+const emptyGrokBillingSummary = (): GrokBillingSummary => ({
+  periodType: "unknown",
+  usagePercent: null,
+  productUsage: [],
+  monthlyLimitCents: null,
+  usedCents: null,
+  includedUsedCents: null,
+  onDemandCapCents: null,
+  onDemandUsedCents: null,
+  onDemandUsedPercent: null,
+  usedPercent: null,
+});
+
+export function buildGrokBillingSummary(config: unknown): GrokBillingSummary | null {
+  const record = getRecord(config);
+  if (!record) return null;
+
+  const summary = emptyGrokBillingSummary();
+  const currentPeriod = getRecord(record.currentPeriod ?? record.current_period);
+  const periodType = resolveGrokPeriodType(currentPeriod);
+  const creditUsagePercent = normalizeNumberValue(record.creditUsagePercent ?? record.credit_usage_percent);
+  const periodStart =
+    normalizeStringValue(currentPeriod?.start) ??
+    normalizeStringValue(record.billingPeriodStart ?? record.billing_period_start) ??
+    undefined;
+  const periodEnd =
+    normalizeStringValue(currentPeriod?.end) ??
+    normalizeStringValue(record.billingPeriodEnd ?? record.billing_period_end) ??
+    undefined;
+  const productUsage = normalizeGrokProductUsage(record.productUsage ?? record.product_usage, "Product");
+
+  const monthlyLimitCents = grokCentValue(record.monthlyLimit ?? record.monthly_limit);
+  const usedCents = grokCentValue(record.used);
+  const onDemandCapCents = grokCentValue(record.onDemandCap ?? record.on_demand_cap);
+  const explicitOnDemandUsedCents = grokCentValue(record.onDemandUsed ?? record.on_demand_used);
+  const billingPeriodStart =
+    normalizeStringValue(record.billingPeriodStart ?? record.billing_period_start) ?? undefined;
+  const billingPeriodEnd = normalizeStringValue(record.billingPeriodEnd ?? record.billing_period_end) ?? undefined;
+
+  const includedUsedCents =
+    usedCents === null
+      ? null
+      : monthlyLimitCents !== null && monthlyLimitCents > 0
+        ? Math.min(usedCents, monthlyLimitCents)
+        : usedCents;
+  const derivedOnDemandUsedCents =
+    usedCents !== null && monthlyLimitCents !== null ? Math.max(0, usedCents - monthlyLimitCents) : null;
+  const onDemandUsedCents = explicitOnDemandUsedCents ?? derivedOnDemandUsedCents;
+  const usedPercent =
+    monthlyLimitCents !== null && monthlyLimitCents > 0 && includedUsedCents !== null
+      ? (includedUsedCents / monthlyLimitCents) * 100
+      : null;
+  const onDemandUsedPercent =
+    onDemandCapCents !== null && onDemandCapCents > 0 && onDemandUsedCents !== null
+      ? (onDemandUsedCents / onDemandCapCents) * 100
+      : null;
+
+  const hasWeeklyData = creditUsagePercent !== null || periodType === "weekly" || productUsage.length > 0;
+  const hasMonthlyData =
+    monthlyLimitCents !== null ||
+    usedCents !== null ||
+    (!hasWeeklyData && (onDemandCapCents !== null || Boolean(billingPeriodEnd)));
+
+  if (!hasWeeklyData && !hasMonthlyData) return null;
+
+  summary.periodType = hasWeeklyData ? (periodType === "unknown" ? "weekly" : periodType) : "monthly";
+  summary.usagePercent = hasWeeklyData ? creditUsagePercent : usedPercent;
+  summary.periodStart = hasWeeklyData ? periodStart : billingPeriodStart;
+  summary.periodEnd = hasWeeklyData ? periodEnd : billingPeriodEnd;
+  summary.productUsage = productUsage;
+  summary.monthlyLimitCents = monthlyLimitCents;
+  summary.usedCents = usedCents;
+  summary.includedUsedCents = includedUsedCents;
+  summary.onDemandCapCents = onDemandCapCents;
+  summary.onDemandUsedCents = onDemandUsedCents;
+  summary.onDemandUsedPercent = onDemandUsedPercent;
+  summary.billingPeriodStart = hasMonthlyData ? billingPeriodStart : undefined;
+  summary.billingPeriodEnd = hasMonthlyData ? billingPeriodEnd : undefined;
+  summary.usedPercent = usedPercent;
+
+  return summary;
+}
+
+export function parseGrokBillingApiCallEnvelope(value: unknown): GrokBillingSummary | null {
+  const envelope = normalizeApiCallEnvelope(value);
+  if (envelope.statusCode < 200 || envelope.statusCode >= 300) {
+    throw new Error(getApiCallErrorMessage(envelope));
+  }
+
+  const payload = parseGrokBillingPayload(envelope.body ?? envelope.bodyText);
+  return buildGrokBillingSummary(payload?.config);
+}
+
+export function mergeGrokBillingSummaries(
+  primary: GrokBillingSummary | null,
+  fallback: GrokBillingSummary | null,
+): GrokBillingSummary | null {
+  if (!primary) return fallback;
+  if (!fallback) return primary;
+
+  return {
+    periodType: primary.periodType !== "unknown" ? primary.periodType : fallback.periodType,
+    usagePercent: primary.usagePercent ?? fallback.usagePercent,
+    periodStart: primary.periodStart ?? fallback.periodStart,
+    periodEnd: primary.periodEnd ?? fallback.periodEnd,
+    productUsage: primary.productUsage.length > 0 ? primary.productUsage : fallback.productUsage,
+    monthlyLimitCents: primary.monthlyLimitCents ?? fallback.monthlyLimitCents,
+    usedCents: primary.usedCents ?? fallback.usedCents,
+    includedUsedCents: primary.includedUsedCents ?? fallback.includedUsedCents,
+    onDemandCapCents: primary.onDemandCapCents ?? fallback.onDemandCapCents,
+    onDemandUsedCents: primary.onDemandUsedCents ?? fallback.onDemandUsedCents,
+    onDemandUsedPercent: primary.onDemandUsedPercent ?? fallback.onDemandUsedPercent,
+    billingPeriodStart: primary.billingPeriodStart ?? fallback.billingPeriodStart,
+    billingPeriodEnd: primary.billingPeriodEnd ?? fallback.billingPeriodEnd,
+    usedPercent: primary.usedPercent ?? fallback.usedPercent,
+  };
+}
+
+function slugValue(value: string, fallback: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || fallback
+  );
+}
+
+function addGrokPercentWindow(
+  windows: RateLimitWindow[],
+  id: string,
+  label: string,
+  usedPercent: number | null,
+  resetTime?: string,
+  valueLabel?: string,
+) {
+  const normalizedUsed = usedPercent === null ? null : normalizePercent(usedPercent);
+  windows.push({
+    id,
+    label,
+    usedPercent: normalizedUsed ?? undefined,
+    remainingPercent: normalizedUsed === null ? null : normalizePercent(100 - normalizedUsed),
+    resetTime,
+    valueLabel,
+  });
+}
+
+const GROK_SUPERGROK_LIMIT_CENTS = 15_000;
+const GROK_SUPERGROK_HEAVY_LIMIT_CENTS = 150_000;
+
+function resolveGrokPlan(summary: GrokBillingSummary, credentials?: GrokCredentials | null) {
+  if (summary.monthlyLimitCents === GROK_SUPERGROK_LIMIT_CENTS) return "SuperGrok";
+  if (summary.monthlyLimitCents === GROK_SUPERGROK_HEAVY_LIMIT_CENTS) return "SuperGrok Heavy";
+  return getLoginMethod(credentials);
+}
+
+export function buildGrokQuotaDataFromBillingSummary(
+  summary: GrokBillingSummary,
+  credentials?: GrokCredentials | null,
+): QuotaData {
+  const windows: RateLimitWindow[] = [];
+  const weeklyUsed =
+    summary.periodType === "weekly" && summary.usagePercent !== null
+      ? Math.max(0, Math.min(100, summary.usagePercent))
+      : null;
+  const hasWeeklyData =
+    summary.periodType === "weekly" &&
+    (weeklyUsed !== null || Boolean(summary.periodEnd) || summary.productUsage.length > 0);
+  const hasMonthlyData =
+    summary.monthlyLimitCents !== null || summary.usedCents !== null || Boolean(summary.billingPeriodEnd);
+  const onDemandCap = summary.onDemandCapCents ?? 0;
+
+  if (hasWeeklyData) {
+    addGrokPercentWindow(windows, "grok-weekly-credits", "周度 Credits", weeklyUsed, summary.periodEnd);
+  }
+
+  summary.productUsage.forEach((item, index) => {
+    addGrokPercentWindow(
+      windows,
+      `grok-product-${slugValue(item.product, `product-${index + 1}`)}`,
+      item.product,
+      item.usagePercent,
+    );
+  });
+
+  if (onDemandCap > 0) {
+    addGrokPercentWindow(windows, "grok-pay-as-you-go", "Pay as you go", summary.onDemandUsedPercent);
+  }
+
+  if (hasMonthlyData) {
+    addGrokPercentWindow(
+      windows,
+      "grok-monthly-credits",
+      "月度 Credits",
+      summary.usedPercent,
+      summary.billingPeriodEnd,
+    );
+  }
+
+  if (!windows.length) {
+    throw new Error("No quota data available");
+  }
+
+  const plan = resolveGrokPlan(summary, credentials);
+  return {
+    windows,
+    planType: plan ?? undefined,
+    plan_type: plan ?? undefined,
+    tierLabel: plan,
+  };
+}
+
+export function buildGrokQuotaDataFromApiCallResults(
+  weeklyResult: PromiseSettledResult<unknown>,
+  monthlyResult: PromiseSettledResult<unknown>,
+): QuotaData {
+  const errors: unknown[] = [];
+
+  const readSummary = (result: PromiseSettledResult<unknown>) => {
+    if (result.status === "rejected") {
+      errors.push(result.reason);
+      return null;
+    }
+
+    try {
+      return parseGrokBillingApiCallEnvelope(result.value);
+    } catch (error: unknown) {
+      errors.push(error);
+      return null;
+    }
+  };
+
+  const summary = mergeGrokBillingSummaries(readSummary(weeklyResult), readSummary(monthlyResult));
+  if (!summary) {
+    const firstError = errors[0];
+    throw firstError instanceof Error ? firstError : new Error(firstError ? String(firstError) : "No quota data available");
+  }
+
+  return buildGrokQuotaDataFromBillingSummary(summary);
 }
 
 function grokWindowLabel(usage: GrokBillingUsage) {

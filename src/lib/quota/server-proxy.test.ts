@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { buildQuotaApiCall, findRawAuthFile } from "./server-proxy.ts";
-import { CODEX_USAGE_URL, GEMINI_CLI_QUOTA_URL } from "./upstream.ts";
+import { CODEX_USAGE_URL, GEMINI_CLI_QUOTA_URL, XAI_BILLING_MONTHLY_URL, XAI_BILLING_WEEKLY_URL } from "./upstream.ts";
 
 describe("quota server proxy", () => {
   it("builds Codex calls from server-side token data and ignores client-supplied URL fields", () => {
@@ -53,6 +53,18 @@ describe("quota server proxy", () => {
 
     assert.equal(call.url, GEMINI_CLI_QUOTA_URL);
     assert.equal(call.data, JSON.stringify({ project: "project-123" }));
+  });
+
+  it("builds Grok billing calls for the cli proxy backend", () => {
+    const file = { name: "grok.json", type: "xai", provider: "xai", authIndex: "7" };
+    const weekly = buildQuotaApiCall({ authIndex: "7", provider: "xai", action: "xai-weekly" }, file);
+    const monthly = buildQuotaApiCall({ authIndex: "7", provider: "xai", action: "xai-monthly" }, file);
+
+    assert.equal(weekly.method, "GET");
+    assert.equal(weekly.url, XAI_BILLING_WEEKLY_URL);
+    assert.equal(monthly.url, XAI_BILLING_MONTHLY_URL);
+    assert.equal(weekly.header.Authorization, "Bearer $TOKEN$");
+    assert.equal(weekly.header["x-xai-token-auth"], "xai-grok-cli");
   });
 
   it("finds raw auth files by normalized auth index", () => {

@@ -16,6 +16,9 @@ import {
   KIMI_REQUEST_HEADERS,
   KIMI_USAGE_URL,
   resolveProviderType,
+  XAI_BILLING_MONTHLY_URL,
+  XAI_BILLING_WEEKLY_URL,
+  XAI_REQUEST_HEADERS,
 } from "./upstream.ts";
 
 export type QuotaProxyAction =
@@ -24,7 +27,9 @@ export type QuotaProxyAction =
   | "claude-usage"
   | "claude-profile"
   | "gemini-cli-quota"
-  | "gemini-cli-code-assist";
+  | "gemini-cli-code-assist"
+  | "xai-weekly"
+  | "xai-monthly";
 
 export type QuotaProxyRequest = {
   authIndex?: unknown;
@@ -93,7 +98,9 @@ function getRequestedAction(request: QuotaProxyRequest): QuotaProxyAction {
     action === "claude-usage" ||
     action === "claude-profile" ||
     action === "gemini-cli-quota" ||
-    action === "gemini-cli-code-assist"
+    action === "gemini-cli-code-assist" ||
+    action === "xai-weekly" ||
+    action === "xai-monthly"
   ) {
     return action;
   }
@@ -223,6 +230,19 @@ export function buildQuotaApiCall(
       method: "GET",
       url: KIMI_USAGE_URL,
       header: { ...KIMI_REQUEST_HEADERS },
+    };
+  }
+
+  if (provider === "xai") {
+    if (action !== "quota" && action !== "xai-weekly" && action !== "xai-monthly") {
+      throw new Error("Unsupported quota action");
+    }
+
+    return {
+      authIndex,
+      method: "GET",
+      url: action === "xai-monthly" ? XAI_BILLING_MONTHLY_URL : XAI_BILLING_WEEKLY_URL,
+      header: { ...XAI_REQUEST_HEADERS },
     };
   }
 

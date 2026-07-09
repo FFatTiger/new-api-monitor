@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  buildGrokQuotaDataFromApiCallResults,
   buildGrokQuotaData,
   extractGrokCredentials,
   fetchGrokQuotaFromAuthContent,
   GROK_USAGE_URL,
+  parseGrokBillingApiCallEnvelope,
   parseGrokGrpcWebBillingResponse,
   parseGrokRpcBillingResponse,
 } from "./grok.ts";
@@ -109,6 +111,115 @@ describe("Grok quota parsing", () => {
       remainingPercent: 75,
       resetTime: "2026-06-01T00:00:00Z",
     });
+  });
+
+  it("parses the Grok CLI proxy billing structures from api-call envelopes", () => {
+    const weekly = parseGrokBillingApiCallEnvelope({
+      status_code: 200,
+      body: JSON.stringify({
+        config: {
+          currentPeriod: {
+            type: "WEEKLY",
+            start: "2026-05-25T00:00:00Z",
+            end: "2026-06-01T00:00:00Z",
+          },
+          creditUsagePercent: 12.5,
+          productUsage: [{ product: "Grok 4", usagePercent: 40 }],
+        },
+      }),
+    });
+
+    assert.equal(weekly?.periodType, "weekly");
+    assert.equal(weekly?.usagePercent, 12.5);
+    assert.equal(weekly?.periodEnd, "2026-06-01T00:00:00Z");
+    assert.deepEqual(weekly?.productUsage, [{ product: "Grok 4", usagePercent: 40 }]);
+
+    const monthly = parseGrokBillingApiCallEnvelope({
+      statusCode: 200,
+      body: {
+        config: {
+          monthlyLimit: { val: 15_000 },
+          used: { val: 3_000 },
+          onDemandCap: { val: 5_000 },
+          onDemandUsed: { val: 500 },
+          billingPeriodEnd: "2026-06-30T00:00:00Z",
+        },
+      },
+    });
+
+    assert.equal(monthly?.periodType, "monthly");
+    assert.equal(monthly?.monthlyLimitCents, 15_000);
+    assert.equal(monthly?.usedPercent, 20);
+    assert.equal(monthly?.onDemandUsedPercent, 10);
+  });
+
+  it("builds display windows from merged Grok CLI weekly and monthly billing", () => {
+    const data = buildGrokQuotaDataFromApiCallResults(
+      {
+        status: "fulfilled",
+        value: {
+          status_code: 200,
+          body: {
+            config: {
+              current_period: { type: "weekly", end: "2026-06-01T00:00:00Z" },
+              credit_usage_percent: 25,
+              product_usage: [{ product: "DeepSearch", usage_percent: 50 }],
+            },
+          },
+        },
+      },
+      {
+        status: "fulfilled",
+        value: {
+          status_code: 200,
+          body: {
+            config: {
+              monthly_limit: { val: 150_000 },
+              used: { val: 30_000 },
+              on_demand_cap: { val: 10_000 },
+              on_demand_used: { val: 1_000 },
+              billing_period_end: "2026-06-30T00:00:00Z",
+            },
+          },
+        },
+      },
+    );
+
+    assert.equal(data.tierLabel, "SuperGrok Heavy");
+    assert.deepEqual(data.windows, [
+      {
+        id: "grok-weekly-credits",
+        label: "周度 Credits",
+        usedPercent: 25,
+        remainingPercent: 75,
+        resetTime: "2026-06-01T00:00:00Z",
+        valueLabel: undefined,
+      },
+      {
+        id: "grok-product-deepsearch",
+        label: "DeepSearch",
+        usedPercent: 50,
+        remainingPercent: 50,
+        resetTime: undefined,
+        valueLabel: undefined,
+      },
+      {
+        id: "grok-pay-as-you-go",
+        label: "Pay as you go",
+        usedPercent: 10,
+        remainingPercent: 90,
+        resetTime: undefined,
+        valueLabel: undefined,
+      },
+      {
+        id: "grok-monthly-credits",
+        label: "月度 Credits",
+        usedPercent: 20,
+        remainingPercent: 80,
+        resetTime: "2026-06-30T00:00:00Z",
+        valueLabel: undefined,
+      },
+    ]);
   });
 
   it("parses the grok.com gRPC-web billing response percent and preferred reset", () => {
