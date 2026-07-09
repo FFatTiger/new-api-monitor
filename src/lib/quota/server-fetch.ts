@@ -18,6 +18,7 @@ import {
   type QuotaProxyRequest,
 } from "./server-proxy.ts";
 import type { QuotaServerConfig } from "./server-auth-files.ts";
+import { fetchGrokQuotaFromAuthContent } from "./grok.ts";
 import {
   buildAntigravityQuotaGroups,
   buildClaudeQuotaWindows,
@@ -209,6 +210,24 @@ async function fetchKimiQuotaOnServer(file: AuthFile, context: ServerQuotaFetchC
   return { rows };
 }
 
+async function fetchGrokQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
+  if (!context.fetchFileContent) {
+    throw new Error("Server configuration missing");
+  }
+
+  const rawFile = findRawAuthFile(context.rawFiles, file.authIndex);
+  if (resolveProviderType(rawFile) !== "xai") {
+    throw new Error("Provider mismatch");
+  }
+
+  const fileContent = await context.fetchFileContent(rawFile.name);
+  if (!fileContent) {
+    throw new Error("Missing Grok auth file content");
+  }
+
+  return fetchGrokQuotaFromAuthContent(fileContent, context.fetchImpl || fetch);
+}
+
 async function fetchAntigravityQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
   let lastError = "";
 
@@ -349,6 +368,7 @@ export async function fetchQuotaForAuthFileOnServer(file: AuthFile, context: Ser
   if (provider === "claude") return fetchClaudeQuotaOnServer(file, context);
   if (provider === "codex") return fetchCodexQuotaOnServer(file, context);
   if (provider === "gemini-cli") return fetchGeminiCliQuotaOnServer(file, context);
+  if (provider === "xai") return fetchGrokQuotaOnServer(file, context);
   if (provider === "kimi") return fetchKimiQuotaOnServer(file, context);
   if (provider === "minimax") return fetchMiniMaxQuotaOnServer(context);
   if (provider === "zai") return fetchZaiQuotaOnServer(context);

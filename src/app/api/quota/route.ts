@@ -8,6 +8,7 @@ import {
   normalizeMiniMaxApiKey,
   normalizeMiniMaxRegion,
 } from "@/lib/quota/minimax";
+import { fetchGrokQuotaFromAuthContent } from "@/lib/quota/grok";
 import { buildQuotaApiCall, findRawAuthFile, type QuotaProxyRequest } from "@/lib/quota/server-proxy";
 import { resolveProviderType } from "@/lib/quota/upstream";
 import { isZaiAuthIndex, ZAI_USAGE_URL } from "@/lib/quota/zai";
@@ -180,6 +181,22 @@ export async function POST(request: NextRequest) {
     }
 
     const files = await fetchRawAuthFiles();
+
+    if (requestedProvider === "xai") {
+      const file = findRawAuthFile(files, body.authIndex);
+      if (resolveProviderType(file) !== "xai") {
+        return publicError(400);
+      }
+
+      const fileContent = await fetchFileContent(file.name);
+      if (!fileContent) {
+        return publicError(404);
+      }
+
+      const data = await fetchGrokQuotaFromAuthContent(fileContent);
+      return NextResponse.json(data, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
+    }
+
     const file = findRawAuthFile(files, body.authIndex);
     const fileContent = resolveProviderType(file) === "antigravity" ? await fetchFileContent(file.name) : null;
     const apiCall = buildQuotaApiCall(body, file, fileContent);

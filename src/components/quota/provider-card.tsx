@@ -121,7 +121,7 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[0.68rem]">
               {showProviderBadge ? <span className="ds-kicker">{provider === "unknown" ? file.type || "未知" : provider}</span> : null}
               {provider === "claude" && claudePlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{claudePlan}</span> : null}
-              {(provider === "minimax" || provider === "zai") && simplePlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{simplePlan}</span> : null}
+              {(provider === "minimax" || provider === "xai" || provider === "zai") && simplePlan ? <span className="ds-pill px-2 py-1 text-[0.66rem]">{simplePlan}</span> : null}
               {provider === "codex" && codexPlan ? (
                 <span className={["ds-pill px-2 py-1 text-[0.66rem]", isPremiumCodexPlan ? "ds-pill-premium-tier" : ""].filter(Boolean).join(" ")}>{codexPlan}</span>
               ) : null}

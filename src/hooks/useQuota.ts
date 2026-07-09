@@ -86,8 +86,11 @@ export const useQuota = () => {
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     if (autoRefresh) {
-      void loadAuthFiles();
+      timeoutId = setTimeout(() => {
+        void loadAuthFiles();
+      }, 0);
       interval = setInterval(() => {
         void loadAuthFiles();
       }, 60_000);
@@ -96,6 +99,9 @@ export const useQuota = () => {
     return () => {
       if (interval) {
         clearInterval(interval);
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
       }
     };
   }, [autoRefresh, loadAuthFiles]);

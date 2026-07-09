@@ -91,4 +91,17 @@ describe("weekly quota ring data", () => {
       tone: "emerald",
     });
   });
+
+  it("uses the Grok credits window as the top-right quota summary", () => {
+    const data: QuotaData = {
+      windows: [{ id: "grok-credits", label: "Credits", remainingPercent: 58 }],
+    };
+
+    assert.deepEqual(getWeeklyQuotaRingData("xai", data), {
+      percent: 58,
+      label: "Credits",
+      valueLabel: "58%",
+      tone: "emerald",
+    });
+  });
 });

@@ -210,7 +210,7 @@ export function QuotaContent({ type, data }: { type: ProviderType; data: QuotaDa
     return <div className="space-y-2.5">{windows.map((window) => renderCodexWindow(window, window.label || window.id || "额度"))}</div>;
   }
 
-  if (type === "zai") {
+  if (type === "xai" || type === "zai") {
     const windows = data.windows || [];
     if (!windows.length) {
       return <div className="text-[0.78rem] text-[var(--foreground-faint)]">暂无额度数据</div>;

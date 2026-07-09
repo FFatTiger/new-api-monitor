@@ -32,14 +32,14 @@ describe("quota fetch policy", () => {
     );
   });
 
-  it("skips xAI Grok quota until the backend exposes a quota endpoint", () => {
+  it("does not skip xAI Grok accounts after quota support is available", () => {
     assert.equal(
       getQuotaFetchSkipReason({
         ...baseAuthFile,
         type: "xai",
         provider: "xai",
       }),
-      "Grok quota unavailable (Skipped)",
+      null,
     );
   });
 });

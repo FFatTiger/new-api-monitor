@@ -56,6 +56,10 @@ function findZaiWindow(windows: RateLimitWindow[]) {
   return findWeeklyWindow(windows);
 }
 
+function findGrokWindow(windows: RateLimitWindow[]) {
+  return windows.find((windowData) => String(windowData.id || "").toLowerCase().includes("credits")) || windows[0];
+}
+
 function getRingWindow(type: ProviderType, data: QuotaData) {
   if (type === "codex" || type === "claude") {
     return data.windows?.length
@@ -64,13 +68,14 @@ function getRingWindow(type: ProviderType, data: QuotaData) {
   }
 
   if (type === "minimax") return findMiniMaxWindow(data.windows || []);
+  if (type === "xai") return findGrokWindow(data.windows || []);
   if (type === "zai") return findZaiWindow(data.windows || []);
 
   return null;
 }
 
 export function getWeeklyQuotaRingData(type: ProviderType, data?: QuotaData): WeeklyQuotaRingData {
-  if (!data || !["codex", "claude", "minimax", "zai"].includes(type)) return emptyWeeklyRing;
+  if (!data || !["codex", "claude", "minimax", "xai", "zai"].includes(type)) return emptyWeeklyRing;
 
   const ringWindow = getRingWindow(type, data);
   const percent = getRemainingPercent(ringWindow);
