@@ -6,6 +6,7 @@ import {
   formatDurationSeconds,
   formatInputWithCache,
   formatInteger,
+  formatOutputTokensPerSec,
   formatPercent,
 } from "@/lib/format";
 import type { StabilitySummary, SummaryMetrics } from "@/lib/queries/dashboard";
@@ -60,7 +61,7 @@ const cards: Array<{
     label: "输出 tok/s",
     foot: "tok/s",
     getValue: (summary) => summary.avgOutputTokensPerSec,
-    format: (value) => formatCompactNumber(value ?? 0),
+    format: (value) => formatOutputTokensPerSec(value),
     valueClassName: "text-[var(--foreground)]",
   },
   {

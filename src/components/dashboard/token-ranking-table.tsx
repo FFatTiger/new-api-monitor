@@ -6,7 +6,7 @@ import {
   TokenDetailDialog,
   useTokenDetailDialog,
 } from "@/components/dashboard/token-detail-dialog";
-import { formatCompactNumber, formatDateTime, formatPercent, formatStatus, getCacheRatio } from "@/lib/format";
+import { formatCompactNumber, formatDateTime, formatOutputTokensPerSec, formatPercent, formatStatus, getCacheRatio } from "@/lib/format";
 import type {
   ChannelRankingRow,
   ModelRankingRow,
@@ -98,14 +98,6 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     latestUsedAt: "最近调用",
   },
 };
-
-function formatOutputTokensPerSec(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "-";
-  }
-
-  return formatCompactNumber(value);
-}
 
 function sortRows(rows: RankingViewRow[], sortKey: SortKey, sortDirection: SortDirection) {
   return rows
@@ -396,7 +388,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
                   <span className="text-right">{formatDateTime(row.latestUsedAt)}</span>
                   {(activeDimension === "model" || activeDimension === "channel") && row.outputTokensPerSec != null ? (
                     <span>
-                      输出 tok/s <span className="ml-1 ds-mono text-[var(--foreground)]">{formatCompactNumber(row.outputTokensPerSec)}</span>
+                      输出 tok/s <span className="ml-1 ds-mono text-[var(--foreground)]">{formatOutputTokensPerSec(row.outputTokensPerSec)}</span>
                     </span>
                   ) : null}
                 </div>

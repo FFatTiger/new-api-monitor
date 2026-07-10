@@ -1,5 +1,9 @@
 import type { ReactElement } from "react";
 
+import { formatOutputTokensPerSec, getCacheRatio } from "./format-metrics";
+
+export { formatOutputTokensPerSec, getCacheRatio };
+
 const integerFormatter = new Intl.NumberFormat("zh-CN");
 const compactFormatter = new Intl.NumberFormat("zh-CN", {
   notation: "compact",
@@ -48,14 +52,6 @@ export function formatCompactNumber(value: number) {
 
 export function formatCompactNumberStr(value: number) {
   return compactFormatter.format(value);
-}
-
-export function getCacheRatio(inputTokens: number, cacheTokens: number) {
-  if (inputTokens <= 0 || !Number.isFinite(inputTokens) || !Number.isFinite(cacheTokens)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(1, cacheTokens / inputTokens));
 }
 
 export function formatInputWithCache(inputTokens: number, cacheTokens: number): string | ReactElement {

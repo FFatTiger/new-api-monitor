@@ -3,11 +3,11 @@
 import { useMemo, useState, type ReactNode } from "react";
 
 import {
-  formatCompactNumber,
   formatDateTime,
   formatDurationMsAsSeconds,
   formatDurationSeconds,
   formatInteger,
+  formatOutputTokensPerSec,
   formatPercent,
   formatStatus,
 } from "@/lib/format";
@@ -105,14 +105,6 @@ function formatAvailabilityRate(value: number | null | undefined) {
   }
 
   return formatPercent(value);
-}
-
-function formatOutputTokensPerSec(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "-";
-  }
-
-  return formatCompactNumber(value);
 }
 
 function sortRows(rows: StabilityViewRow[], sortKey: SortKey, sortDirection: SortDirection) {

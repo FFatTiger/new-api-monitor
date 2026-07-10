@@ -625,7 +625,7 @@ export async function getDashboardSummaryData(searchParams: SearchParamsInput | 
           COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens,
           COUNT(DISTINCT l.user_id) AS active_user_count,
           COUNT(DISTINCT l.channel_id) AS active_channel_count,
-          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec
         FROM logs l
         ${whereSql}
       `,
@@ -718,7 +718,7 @@ export async function getDashboardRankingData(searchParams: SearchParamsInput | 
     query<Record<string, string | number | null>>(`
       SELECT ${normalizedModelSql} AS model_name, COUNT(*) AS request_count, COALESCE(SUM(${getInputTokensSql("l")}), 0) AS input_tokens,
         COALESCE(SUM(l.completion_tokens), 0) AS output_tokens, COALESCE(SUM(${getInputTokensSql("l")} + l.completion_tokens), 0) AS total_tokens,
-        COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens, AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS output_tokens_per_sec,
+        COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens, AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS output_tokens_per_sec,
         MAX(l.created_at) AS latest_used_at
       FROM logs l ${whereSql} GROUP BY 1 ORDER BY total_tokens DESC, request_count DESC LIMIT 12
     `, values),
@@ -729,7 +729,7 @@ export async function getDashboardRankingData(searchParams: SearchParamsInput | 
         SELECT COALESCE(channel_id, 0) AS channel_id, MAX(NULLIF(channel_name, '')) AS log_channel_name, COUNT(*) AS request_count,
           COALESCE(SUM(${getInputTokensSql("filtered_logs")}), 0) AS input_tokens, COALESCE(SUM(completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(${getInputTokensSql("filtered_logs")} + completion_tokens), 0) AS total_tokens, COALESCE(SUM(cache_tokens), 0) AS cache_tokens,
-          AVG(CASE WHEN type = 2 AND use_time > 0 THEN completion_tokens::numeric / NULLIF(use_time, 0) END) AS output_tokens_per_sec, MAX(created_at) AS latest_used_at
+          AVG(CASE WHEN type = 2 AND use_time > 0 AND completion_tokens > 0 THEN completion_tokens::numeric / NULLIF(use_time, 0) END) AS output_tokens_per_sec, MAX(created_at) AS latest_used_at
         FROM filtered_logs GROUP BY COALESCE(channel_id, 0)
       )
       SELECT aggregated.channel_id, COALESCE(NULLIF(channels.name, ''), aggregated.log_channel_name, CONCAT('渠道 ', aggregated.channel_id::text)) AS channel_name,
@@ -758,7 +758,7 @@ export async function getDashboardStabilityData(searchParams: SearchParamsInput 
       SELECT ${normalizedModelSql} AS model_name, COUNT(*) FILTER (WHERE l.type IN (2, 5)) AS total_attempts, COUNT(*) FILTER (WHERE l.type = 2) AS success_count,
         COUNT(*) FILTER (WHERE l.type = 5) AS error_count, COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
         AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency, AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
-        AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec, MAX(l.created_at) AS latest_used_at
+        AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec, MAX(l.created_at) AS latest_used_at
       FROM logs l ${whereSql} GROUP BY 1 HAVING COUNT(*) FILTER (WHERE l.type IN (2, 5)) > 0 ORDER BY error_rate DESC NULLS LAST, total_attempts DESC, latest_used_at DESC LIMIT 12
     `, values),
     query<Record<string, string | number | null>>(`
@@ -767,7 +767,7 @@ export async function getDashboardStabilityData(searchParams: SearchParamsInput 
           COUNT(*) FILTER (WHERE l.type = 2) AS success_count, COUNT(*) FILTER (WHERE l.type = 5) AS error_count,
           COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
           AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency, AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
-          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec, MAX(l.created_at) AS latest_used_at
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec, MAX(l.created_at) AS latest_used_at
         FROM logs l ${whereSql} GROUP BY COALESCE(l.channel_id, 0)
       )
       SELECT aggregated.channel_id, COALESCE(NULLIF(channels.name, ''), aggregated.log_channel_name, CONCAT('渠道 ', aggregated.channel_id::text)) AS channel_name,
@@ -878,7 +878,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens,
           COUNT(DISTINCT l.user_id) AS active_user_count,
           COUNT(DISTINCT l.channel_id) AS active_channel_count,
-          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec
         FROM logs l
         ${whereSql}
       `,
@@ -1037,7 +1037,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COALESCE(SUM(l.completion_tokens), 0) AS output_tokens,
           COALESCE(SUM(${getInputTokensSql("l")} + l.completion_tokens), 0) AS total_tokens,
           COALESCE(SUM(${cacheTokensSql}), 0) AS cache_tokens,
-          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS output_tokens_per_sec,
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS output_tokens_per_sec,
           MAX(l.created_at) AS latest_used_at
         FROM logs l
         ${whereSql}
@@ -1084,7 +1084,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COALESCE(SUM(completion_tokens), 0) AS output_tokens,
             COALESCE(SUM(${getInputTokensSql("filtered_logs")} + completion_tokens), 0) AS total_tokens,
             COALESCE(SUM(cache_tokens), 0) AS cache_tokens,
-            AVG(CASE WHEN type = 2 AND use_time > 0 THEN completion_tokens::numeric / NULLIF(use_time, 0) END) AS output_tokens_per_sec,
+            AVG(CASE WHEN type = 2 AND use_time > 0 AND completion_tokens > 0 THEN completion_tokens::numeric / NULLIF(use_time, 0) END) AS output_tokens_per_sec,
             MAX(created_at) AS latest_used_at
           FROM filtered_logs
           GROUP BY COALESCE(channel_id, 0)
@@ -1128,7 +1128,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
           COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
           AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
           AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
-          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec,
+          AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec,
           MAX(l.created_at) AS latest_used_at
         FROM logs l
         ${whereSql}
@@ -1164,7 +1164,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
             COUNT(*) FILTER (WHERE l.type = 5)::double precision / NULLIF(COUNT(*) FILTER (WHERE l.type IN (2, 5)), 0) AS error_rate,
             AVG(${validFirstTokenLatencySql}) FILTER (WHERE l.type = 2) AS avg_first_token_latency,
             AVG(NULLIF(l.use_time, 0)) FILTER (WHERE l.type = 2) AS avg_total_response_time,
-            AVG(CASE WHEN l.type = 2 AND l.use_time > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec,
+            AVG(CASE WHEN l.type = 2 AND l.use_time > 0 AND l.completion_tokens > 0 THEN l.completion_tokens::numeric / NULLIF(l.use_time, 0) END) AS avg_output_tokens_per_sec,
             MAX(l.created_at) AS latest_used_at
           FROM logs l
           ${whereSql}
