@@ -46,8 +46,11 @@ export function getDashboardAllBucket(): number {
 }
 
 /**
- * Watermark anchored to the latest processed event time, capped to the latest
- * closed UTC minute (exclusive end of that minute / start of the open minute).
+ * Minute-aligned exclusive end of the latest data-supported closed minute.
+ *
+ * - processedExclusiveEnd = floor(maxProcessedCreatedAt/60)*60 + 60
+ * - latestClosedMinuteEnd = floor(now/60)*60
+ * - return min(processedExclusiveEnd, latestClosedMinuteEnd)
  */
 export function getClosedDashboardWatermark(
   maxProcessedCreatedAt: number | null,
@@ -56,8 +59,10 @@ export function getClosedDashboardWatermark(
   if (maxProcessedCreatedAt === null) return null;
   assertFiniteSeconds("maxProcessedCreatedAt", maxProcessedCreatedAt);
   assertFiniteSeconds("nowSeconds", nowSeconds);
+  const processedExclusiveEnd =
+    floorTo(maxProcessedCreatedAt, MINUTE_SECONDS) + MINUTE_SECONDS;
   const latestClosedMinuteEnd = floorTo(Math.floor(nowSeconds), MINUTE_SECONDS);
-  return Math.min(maxProcessedCreatedAt, latestClosedMinuteEnd);
+  return Math.min(processedExclusiveEnd, latestClosedMinuteEnd);
 }
 
 export function getDashboardThirtyDayRange(watermark: number): {

@@ -40,21 +40,43 @@ describe("dashboard rollup watermark and 30d range", () => {
     assert.equal(getClosedDashboardWatermark(null, 1_700_000_000), null);
   });
 
-  it("anchors watermark to latest processed event and caps to latest closed minute", () => {
-    // now = 12:34:45 -> latest closed minute exclusive end is 12:34:00
+  it("returns minute-aligned exclusive end of the latest data-supported closed minute", () => {
+    // now = 12:34:45 -> latestClosedMinuteEnd = floor(now/60)*60 = 12:34:00
     const nowSeconds = Date.UTC(2024, 5, 15, 12, 34, 45) / 1000;
-    const closedMinuteEnd = Date.UTC(2024, 5, 15, 12, 34, 0) / 1000;
+    const latestClosedMinuteEnd = Date.UTC(2024, 5, 15, 12, 34, 0) / 1000;
 
-    // Processed mid previous minute: watermark is the processed second (still closed)
+    // Processed mid previous minute 12:33:20 -> exclusive end 12:34:00 (fully closed)
     const processedEarlier = Date.UTC(2024, 5, 15, 12, 33, 20) / 1000;
-    assert.equal(getClosedDashboardWatermark(processedEarlier, nowSeconds), processedEarlier);
+    assert.equal(
+      getClosedDashboardWatermark(processedEarlier, nowSeconds),
+      Date.UTC(2024, 5, 15, 12, 34, 0) / 1000,
+    );
 
-    // Processed inside the open minute: capped to closed minute end
+    // Processed earlier still: 12:32:05 -> exclusive end 12:33:00 (data-limited, still minute-aligned)
+    const processedOlder = Date.UTC(2024, 5, 15, 12, 32, 5) / 1000;
+    assert.equal(
+      getClosedDashboardWatermark(processedOlder, nowSeconds),
+      Date.UTC(2024, 5, 15, 12, 33, 0) / 1000,
+    );
+
+    // Processed exactly on a minute boundary: exclusive end is +60s
+    const processedOnBoundary = Date.UTC(2024, 5, 15, 12, 33, 0) / 1000;
+    assert.equal(
+      getClosedDashboardWatermark(processedOnBoundary, nowSeconds),
+      Date.UTC(2024, 5, 15, 12, 34, 0) / 1000,
+    );
+
+    // Processed inside the open minute: capped to latestClosedMinuteEnd
     const processedOpen = Date.UTC(2024, 5, 15, 12, 34, 10) / 1000;
-    assert.equal(getClosedDashboardWatermark(processedOpen, nowSeconds), closedMinuteEnd);
+    assert.equal(getClosedDashboardWatermark(processedOpen, nowSeconds), latestClosedMinuteEnd);
 
     // Processed far in the future relative to now: still capped
-    assert.equal(getClosedDashboardWatermark(nowSeconds + 3600, nowSeconds), closedMinuteEnd);
+    assert.equal(getClosedDashboardWatermark(nowSeconds + 3600, nowSeconds), latestClosedMinuteEnd);
+
+    // Always minute-aligned when non-null
+    const watermark = getClosedDashboardWatermark(processedEarlier, nowSeconds);
+    assert.ok(watermark !== null);
+    assert.equal(watermark % 60, 0);
   });
 
   it("builds a 30-day window ending at the watermark", () => {
@@ -62,6 +84,50 @@ describe("dashboard rollup watermark and 30d range", () => {
     const range = getDashboardThirtyDayRange(watermark);
     assert.equal(range.end, watermark);
     assert.equal(range.start, watermark - 30 * 24 * 60 * 60);
+  });
+
+  it("chains watermark -> thirty-day range -> decompose without gaps or throws", () => {
+    // Mid-minute processed event + mid-minute now must still produce a decomposable range.
+    const nowSeconds = Date.UTC(2024, 5, 15, 12, 34, 45) / 1000;
+    const maxProcessedCreatedAt = Date.UTC(2024, 5, 15, 12, 33, 20) / 1000;
+    const lastClosedProcessedMinuteStart = Date.UTC(2024, 5, 15, 12, 33, 0) / 1000;
+
+    const watermark = getClosedDashboardWatermark(maxProcessedCreatedAt, nowSeconds);
+    assert.equal(watermark, Date.UTC(2024, 5, 15, 12, 34, 0) / 1000);
+    assert.equal(watermark! % 60, 0);
+
+    const range = getDashboardThirtyDayRange(watermark!);
+    assert.equal(range.end, watermark);
+    assert.equal(range.start, watermark! - 30 * 24 * 60 * 60);
+    assert.equal(range.start % 60, 0);
+    assert.equal(range.end % 60, 0);
+
+    const segments = decomposeDashboardRange(range.start, range.end);
+    assert.ok(segments.length >= 1);
+
+    // Contiguous exact coverage of [start, end)
+    assert.equal(segments[0].start, range.start);
+    assert.equal(segments[segments.length - 1].end, range.end);
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      assert.ok(segment.end > segment.start);
+      assert.equal(segment.start % 60, 0);
+      assert.equal(segment.end % 60, 0);
+      if (i > 0) {
+        assert.equal(segment.start, segments[i - 1].end);
+      }
+    }
+
+    // Last closed processed minute [12:33:00, 12:34:00) is included via exclusive end watermark.
+    assert.ok(lastClosedProcessedMinuteStart >= range.start);
+    assert.ok(lastClosedProcessedMinuteStart < range.end);
+    assert.ok(
+      segments.some(
+        (segment) =>
+          segment.start <= lastClosedProcessedMinuteStart &&
+          lastClosedProcessedMinuteStart < segment.end,
+      ),
+    );
   });
 });
 
