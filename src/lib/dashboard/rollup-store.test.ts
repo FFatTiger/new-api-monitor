@@ -18,7 +18,7 @@ import {
   processDashboardRollupWorkItem,
   selectDashboardRollupWorkItem,
 } from "./rollup-store.ts";
-import type { DashboardRollupWorkItem, DashboardSourceLogRow } from "./types.ts";
+import type { DashboardSourceLogRow } from "./types.ts";
 
 const config: DashboardRollupConfig = {
   workerEnabled: true,

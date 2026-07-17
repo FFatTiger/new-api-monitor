@@ -69,7 +69,6 @@ export interface DashboardRollupRunDependencies {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __newApiMonitorDashboardRollupWorkerState:
     | DashboardRollupWorkerState
     | undefined;

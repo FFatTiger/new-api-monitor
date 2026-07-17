@@ -199,8 +199,9 @@ function readStateStatus(status: unknown): string {
 
 export async function readDashboardRollupReadiness(
   client: DbClient,
-  _config: DashboardRollupConfig,
+  config: DashboardRollupConfig,
 ): Promise<DashboardRollupReadiness> {
+  void config;
   const registryResult = await client.query(
     `SELECT active_version, building_version
      FROM dashboard_rollup_registry

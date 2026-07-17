@@ -415,7 +415,9 @@ describe("dashboard rollup worker", () => {
       disabledConfig,
       "live",
       {
-        withTransaction: async <T,>(_cb: unknown, _options?: unknown): Promise<T> => {
+        withTransaction: async <T,>(callback: unknown, options?: unknown): Promise<T> => {
+          void callback;
+          void options;
           withTransactionCalls += 1;
           return null as T;
         },

@@ -135,8 +135,9 @@ export function detectLiveGaps(priorCursorId: bigint, fetchedIdsAsc: bigint[]): 
  */
 export function detectHistoryGaps(
   fetchedIdsDesc: bigint[],
-  _nextCursorBoundary: bigint | null,
+  nextCursorBoundary: bigint | null,
 ): IdGapRange[] {
+  void nextCursorBoundary;
   const gaps: IdGapRange[] = [];
   for (let i = 0; i < fetchedIdsDesc.length - 1; i++) {
     const higher = fetchedIdsDesc[i]!;
