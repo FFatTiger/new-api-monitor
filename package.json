@@ -6,7 +6,8 @@
     "dev": "next dev -p 31891",
     "build": "next build",
     "start": "next start -p 31891",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:dashboard": "node --experimental-strip-types --test src/lib/db.test.ts src/lib/dashboard/*.test.ts"
   },
   "dependencies": {
     "next": "16.2.6",
