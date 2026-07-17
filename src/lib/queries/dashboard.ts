@@ -1,4 +1,16 @@
 import { query } from "@/lib/db";
+import {
+  assertLegacyDashboardFilters,
+  buildDashboardQueryPlan,
+  parseDashboardRouteFilters,
+  peekDashboardPreset,
+  type DashboardQueryPlan,
+} from "@/lib/dashboard/dashboard-routing";
+import { getDashboardRollupConfig } from "@/lib/dashboard/rollup-config";
+import {
+  getDashboardRollupModelOptions,
+  getDashboardRollupReadiness,
+} from "@/lib/dashboard/rollup-query";
 
 const PRESET_SECONDS = {
   "24h": 24 * 60 * 60,
@@ -522,26 +534,81 @@ function isDashboardFilters(input: SearchParamsInput | DashboardFilters): input 
   return typeof (input as DashboardFilters).preset === "string" && typeof (input as DashboardFilters).windowLabel === "string";
 }
 
+const LONG_RANGE_RAW_ERROR =
+  "getDashboardData does not support long-range raw queries; use rollup packet routing";
+
+async function fetchLogsTimeBounds(): Promise<{ minTimestamp: number; maxTimestamp: number }> {
+  const timeBoundsResult = await query<TimeBoundsRow>(
+    "SELECT MIN(created_at) AS min_ts, MAX(created_at) AS max_ts FROM logs",
+  );
+  const timeBounds = timeBoundsResult.rows[0];
+  const minTimestamp = toNumber(timeBounds?.min_ts);
+  const maxTimestamp = toNumber(timeBounds?.max_ts);
+
+  if (!maxTimestamp) {
+    throw new Error("No log data available in the database.");
+  }
+
+  return { minTimestamp, maxTimestamp };
+}
+
+/**
+ * Classify the dashboard request before any long-range raw logs aggregate.
+ * 30d/all never issue MIN/MAX(logs.created_at). Custom uses typed bounds only.
+ */
+export async function resolveDashboardQueryPlan(
+  searchParams: SearchParamsInput = {},
+): Promise<DashboardQueryPlan> {
+  const preset = peekDashboardPreset(searchParams);
+
+  if (preset === "30d" || preset === "all") {
+    const filters = parseDashboardRouteFilters(searchParams);
+    const config = getDashboardRollupConfig();
+    const readiness = await getDashboardRollupReadiness(config);
+    return buildDashboardQueryPlan(filters, readiness, config.readsEnabled);
+  }
+
+  if (preset === "custom") {
+    const filters = parseDashboardRouteFilters(searchParams);
+    const config = getDashboardRollupConfig();
+    // Classification for custom does not need readiness/DB; unsupported path never scans logs.
+    const readiness = {
+      kind: "disabled" as const,
+      processedRows: 0,
+      safeMessage: "",
+    };
+    return buildDashboardQueryPlan(filters, readiness, config.readsEnabled);
+  }
+
+  // today / 24h / 7d — retain current MIN/MAX source-bound semantics
+  const bounds = await fetchLogsTimeBounds();
+  const filters = parseDashboardRouteFilters(searchParams, bounds);
+  return buildDashboardQueryPlan(
+    filters,
+    { kind: "disabled", processedRows: 0, safeMessage: "" },
+    false,
+  );
+}
+
 async function getDashboardQueryContext(input: SearchParamsInput | DashboardFilters = {}) {
   let minTimestamp = 0;
   let maxTimestamp = 0;
   let filters: DashboardFilters;
 
   if (isDashboardFilters(input)) {
+    assertLegacyDashboardFilters(input);
     filters = input;
   } else {
-    const timeBoundsResult = await query<TimeBoundsRow>(
-      "SELECT MIN(created_at) AS min_ts, MAX(created_at) AS max_ts FROM logs",
-    );
-    const timeBounds = timeBoundsResult.rows[0];
-    minTimestamp = toNumber(timeBounds?.min_ts);
-    maxTimestamp = toNumber(timeBounds?.max_ts);
-
-    if (!maxTimestamp) {
-      throw new Error("No log data available in the database.");
+    const plan = await resolveDashboardQueryPlan(input);
+    if (plan.kind !== "legacy") {
+      throw new Error(LONG_RANGE_RAW_ERROR);
     }
-
-    filters = parseFilters(input, minTimestamp, maxTimestamp);
+    filters = plan.filters;
+    if (filters.preset === "today" || filters.preset === "24h" || filters.preset === "7d") {
+      const bounds = await fetchLogsTimeBounds();
+      minTimestamp = bounds.minTimestamp;
+      maxTimestamp = bounds.maxTimestamp;
+    }
   }
 
   const { whereSql, values } = buildLogsWhere(filters);
@@ -558,27 +625,17 @@ async function getDashboardQueryContext(input: SearchParamsInput | DashboardFilt
   };
 }
 
-export async function getDashboardShellData(searchParams: SearchParamsInput = {}): Promise<DashboardShellData> {
-  const context = await getDashboardQueryContext(searchParams);
-  const [usernameOptionResult, modelOptionResult, channelOptionResult] = await Promise.all([
+async function loadUserAndChannelOptions(): Promise<{
+  usernameOptions: FilterOption[];
+  channelOptions: FilterOption[];
+}> {
+  const [usernameOptionResult, channelOptionResult] = await Promise.all([
     query<{ username: string }>(
       `
         SELECT username
         FROM users
         WHERE username <> ''
         ORDER BY username ASC
-      `,
-    ),
-    query<{ model_name: string }>(
-      `
-        SELECT DISTINCT normalized_model AS model_name
-        FROM (
-          SELECT ${context.normalizedModelSql} AS normalized_model
-          FROM logs l
-          WHERE l.model_name <> ''
-        ) models
-        WHERE normalized_model <> 'Unknown'
-        ORDER BY model_name ASC
       `,
     ),
     query<{ id: string | number; label: string }>(
@@ -593,13 +650,88 @@ export async function getDashboardShellData(searchParams: SearchParamsInput = {}
   ]);
 
   return {
-    minTimestamp: context.minTimestamp,
-    maxTimestamp: context.maxTimestamp,
+    usernameOptions: usernameOptionResult.rows.map((row) => ({
+      value: String(row.username ?? ""),
+      label: String(row.username ?? ""),
+    })),
+    channelOptions: channelOptionResult.rows.map((row) => ({
+      value: String(row.id),
+      label: row.label,
+    })),
+  };
+}
+
+async function loadRawModelOptions(): Promise<FilterOption[]> {
+  const normalizedModelSql = getNormalizedModelSql("l.model_name");
+  const modelOptionResult = await query<{ model_name: string }>(
+    `
+      SELECT DISTINCT normalized_model AS model_name
+      FROM (
+        SELECT ${normalizedModelSql} AS normalized_model
+        FROM logs l
+        WHERE l.model_name <> ''
+      ) models
+      WHERE normalized_model <> 'Unknown'
+      ORDER BY model_name ASC
+    `,
+  );
+  return modelOptionResult.rows.map((row) => ({
+    value: String(row.model_name ?? ""),
+    label: String(row.model_name ?? ""),
+  }));
+}
+
+export async function getDashboardShellData(
+  searchParams: SearchParamsInput = {},
+  resolvedPlan?: DashboardQueryPlan,
+): Promise<DashboardShellData> {
+  const plan = resolvedPlan ?? (await resolveDashboardQueryPlan(searchParams));
+  const { usernameOptions, channelOptions } = await loadUserAndChannelOptions();
+
+  if (plan.kind === "rollup") {
+    const modelOptions = await getDashboardRollupModelOptions(plan.version);
+    return {
+      minTimestamp: plan.startTimestamp ?? 0,
+      maxTimestamp: plan.endTimestamp ?? 0,
+      generatedAt: Date.now(),
+      filters: plan.filters,
+      usernameOptions,
+      modelOptions,
+      channelOptions,
+    };
+  }
+
+  if (plan.kind === "unavailable") {
+    return {
+      minTimestamp: 0,
+      maxTimestamp: 0,
+      generatedAt: Date.now(),
+      filters: plan.filters,
+      usernameOptions,
+      modelOptions: [],
+      channelOptions,
+    };
+  }
+
+  // legacy short path — retain raw model options
+  let minTimestamp = 0;
+  let maxTimestamp = 0;
+  if (plan.filters.preset === "today" || plan.filters.preset === "24h" || plan.filters.preset === "7d") {
+    const bounds = await fetchLogsTimeBounds();
+    minTimestamp = bounds.minTimestamp;
+    maxTimestamp = bounds.maxTimestamp;
+  }
+
+  const modelOptions = await loadRawModelOptions();
+
+  return {
+    minTimestamp,
+    maxTimestamp,
     generatedAt: Date.now(),
-    filters: context.filters,
-    usernameOptions: usernameOptionResult.rows.map((row) => ({ value: String(row.username ?? ""), label: String(row.username ?? "") })),
-    modelOptions: modelOptionResult.rows.map((row) => ({ value: String(row.model_name ?? ""), label: String(row.model_name ?? "") })),
-    channelOptions: channelOptionResult.rows.map((row) => ({ value: String(row.id), label: row.label })),
+    filters: plan.filters,
+    usernameOptions,
+    modelOptions,
+    channelOptions,
   };
 }
 
@@ -826,6 +958,11 @@ export async function getTokenDetailData(searchParams: SearchParamsInput = {}, t
 }
 
 export async function getDashboardData(searchParams: SearchParamsInput = {}): Promise<DashboardData> {
+  const plan = await resolveDashboardQueryPlan(searchParams);
+  if (plan.kind !== "legacy") {
+    throw new Error(LONG_RANGE_RAW_ERROR);
+  }
+
   const timeBoundsResult = await query<TimeBoundsRow>(
     "SELECT MIN(created_at) AS min_ts, MAX(created_at) AS max_ts FROM logs",
   );
@@ -838,7 +975,7 @@ export async function getDashboardData(searchParams: SearchParamsInput = {}): Pr
     throw new Error("No log data available in the database.");
   }
 
-  const filters = parseFilters(searchParams, minTimestamp, maxTimestamp);
+  const filters = plan.filters;
   const { whereSql, values } = buildLogsWhere(filters);
   const trendBucket = filters.granularity;
   const normalizedModelSql = getNormalizedModelSql("l.model_name");
