@@ -1,5 +1,7 @@
 # Dashboard Incremental Rollups Design
 
+> **Implemented first-release scope (authoritative):** six sparse masks `0/1/2/4/8/15`, four grains, no recent-history lane, default batch `100` / pause `500ms` / timeout `5000ms`, and both `30d` and `all` remain unavailable until full historical backfill activates the version. Custom ranges longer than seven days are intentionally unavailable in this release. The sections below reflect that shipped scope.
+
 ## Goal
 
 Prevent the dashboard's **30 天** and **不限** filters from saturating CPU, including the first request, cache refreshes, application restarts, and initial historical reconstruction.
@@ -41,9 +43,10 @@ new-api logs (append-only)
        │
        │ bounded keyset batches
        ▼
-normalizer + fixed 16-mask data cube
+normalizer + sparse six-mask data cube
        │
-       ├── all/filter/ranking dimension masks
+       ├── global and single-dimension masks for unfiltered views
+       ├── joint mask 15 for filtered views
        ├── minute rollups
        ├── hour rollups
        ├── day rollups
@@ -67,7 +70,7 @@ The upstream New API `logs` schema provides an integer `id` primary key and Unix
 
 If the table is replaced, the newest source ID moves behind the committed live cursor, or no usable `id` cursor exists, the worker enters an unhealthy state and stops. It must not silently reset a cursor or duplicate statistics. Deleting already-processed old rows is allowed and does not invalidate permanent rollups; rows deleted before backfill reaches them cannot be reconstructed.
 
-A leading `created_at` index, preferably `(created_at, id)`, enables the optional recent-history lane described below. The application never creates this index automatically because building an index on a large source table may itself cause an unacceptable resource spike.
+The first release deliberately uses only ID-keyset live, history, and gap lanes. It does not require or create a leading `created_at` index on the upstream table. The application never creates expensive upstream indexes automatically.
 
 ## Permanent Data Model
 
@@ -87,7 +90,7 @@ CREATE TABLE IF NOT EXISTS dashboard_rollup_registry (
 - `active_version` is the fully completed version normally used by page queries.
 - `building_version` is populated incrementally.
 - Activation is a single transactional update only after historical coverage is complete and the live lane has caught up.
-- During the first-ever build, when no `active_version` exists, `30d` and covered custom ranges may read the `building_version` after recent-coverage readiness passes. `all` cannot read it until activation.
+- During the first-ever build, neither `30d` nor `all` reads the building version. Both become available together only after full history, gap-readiness, and live catch-up permit atomic activation.
 - During later formula-version rebuilds, all page queries remain on the previous `active_version`; the partially built version is never exposed.
 - Old versions are not deleted automatically. Cleanup is an explicit operator action.
 
@@ -114,13 +117,14 @@ CREATE TABLE IF NOT EXISTS dashboard_rollup_state (
 );
 ```
 
+The nullable `recent_*` columns are reserved schema compatibility fields and are not scheduled or read by the first-release worker.
+
 At version initialization:
 
 - `source_boundary_id` is the latest committed source ID observed once.
 - Rows above the boundary are discovered by the live lane.
-- The optional recent lane accelerates 30-day readiness.
-- The historical lane still walks every ID up to the boundary, including the recent period, so it provides complete coverage and catches rows that committed after the initial recent scan.
-- A processed-source table makes these overlapping lanes idempotent.
+- The historical lane walks every ID up to the boundary.
+- Processed-source claims make retries and gap probes idempotent.
 
 PostgreSQL sequences may allocate IDs in transactions that commit out of order. Advancing a plain `MAX(id)` cursor can therefore skip a lower ID that commits later. The worker records numeric ID gaps found during live and historical keyset scans and probes those ranges in separate bounded attempts. This avoids a trigger on the upstream table while preventing cursor gaps from being silently forgotten.
 
@@ -148,9 +152,9 @@ CREATE INDEX IF NOT EXISTS idx_dashboard_rollup_id_gaps_due
   ON dashboard_rollup_id_gaps (version, next_probe_at);
 ```
 
-The processed-source marker is inserted in the same transaction as all metric upserts. Overlapping recent/history scans, retries, and gap probes can therefore fetch the same source row but cannot normalize or accumulate it twice for one version.
+The processed-source marker is inserted in the same transaction as all metric upserts. Live/history retries and gap probes can therefore fetch the same source row but cannot normalize or accumulate it twice for one version.
 
-Gap ranges are coalesced where possible. One due range is probed per scheduled gap opportunity with a keyset query and the normal batch limit. Empty permanent sequence gaps use exponential backoff capped at one hour; they never cause a tight loop or an unbounded query. If rows later appear inside a range, they are processed and the interval is shrunk or split transactionally.
+Gap ranges are stored as bounded intervals. Exact duplicate intervals are ignored, and a successful partial probe transactionally replaces the original interval with remaining subranges. Empty permanent sequence gaps use exponential backoff capped at one hour; they never cause a tight loop or an unbounded query. If rows later appear inside a range, they are processed and the interval is shrunk or split transactionally.
 
 ### Dimension Combinations
 
@@ -167,11 +171,17 @@ CREATE TABLE IF NOT EXISTS dashboard_rollup_dimensions (
   model_name TEXT,
   channel_id BIGINT,
   UNIQUE (version, dimension_hash),
-  CHECK (dimension_mask BETWEEN 0 AND 15)
+  CHECK (dimension_mask IN (0, 1, 2, 4, 8, 15))
 );
 ```
 
-The four filter dimensions are assigned fixed mask bits: token `1`, user `2`, model `4`, channel `8`. Every combination from `0` through `15` has a defined meaning. Only dimensions selected by the mask participate in the hash and grouping key. The hash includes the mask and a length-prefixed canonical representation with an explicit marker that distinguishes `NULL` from an empty string or zero.
+The four filter dimensions use fixed mask bits: token `1`, user `2`, model `4`, channel `8`. The first release persists exactly six sparse masks:
+
+- `0`: global totals and trend;
+- `1`, `2`, `4`, `8`: unfiltered token, user, model, and channel groupings;
+- `15`: exact joint dimensions for any request carrying one or more filters and for token detail.
+
+Only dimensions selected by the mask participate in the hash and grouping key. The hash includes the mask and a length-prefixed canonical representation with an explicit marker that distinguishes `NULL` from an empty string or zero.
 
 Raw nullable dimension values are retained so `COUNT(DISTINCT ...)`, `ILIKE`, and later regrouping can match the current SQL; model values use the current normalized form. Dimension keys follow source semantics: token uses raw `(token_id, token_name)`, user uses raw `(user_id, username)`, model uses normalized model name, and channel uses raw `channel_id`. Non-key legacy fallback values are stored in the time-bucket rollup row rather than globally, so a 30-day query cannot accidentally use a representative value seen only outside that range.
 
@@ -252,9 +262,9 @@ For each source log, the worker computes the current dashboard semantics once an
 - valid per-request output tokens per second;
 - range-local representative values used by legacy fallbacks: `MAX(user_id)`, `MAX(username)`, and `MAX(channel_name)`;
 - first and latest use timestamps;
-- all 16 dimension masks needed by the four current filter dimensions.
+- all six sparse dimension masks needed by the first-release query paths.
 
-Averages are represented as `sum + count`, never as averages of averages. A normalized source contributes to at most `16 masks × 4 grains = 64` in-memory cells. This is a fixed upper bound independent of history size, and duplicate cells are combined before database upsert. Page queries calculate:
+Averages are represented as `sum + count`, never as averages of averages. A normalized source contributes to at most `6 masks × 4 grains = 24` in-memory cells. This is a fixed upper bound independent of history size, and duplicate cells are combined before database upsert. Page queries calculate:
 
 ```text
 average = accumulated_sum / accumulated_count
@@ -269,8 +279,8 @@ The metric implementation has an integer `DASHBOARD_ROLLUP_VERSION`. Any formula
 Rollup-backed ranges use half-open intervals `[start, end)` aligned to minute boundaries.
 
 - The worker exposes a watermark at the end of the latest closed minute supported by both processed event timestamps and the committed live cursor. If no logs arrive for hours, the anchor remains at the latest processed log minute, preserving the current dashboard's data-anchored fixed-range behavior. The watermark is capped at the current closed minute so a future-dated source row cannot move the dashboard into the future.
-- `24h`, `7d`, and `30d` subtract their duration from this minute-aligned watermark.
-- Custom inputs already have minute precision; the end input is converted to the next minute as the exclusive bound.
+- `30d` subtracts its duration from this minute-aligned watermark.
+- Custom ranges of seven days or less stay on the legacy short-range path; longer or invalid custom ranges are unavailable in this release.
 - Asia/Shanghai is used explicitly for calendar-day boundaries.
 
 This removes the current inclusive-boundary ambiguity and permits exact composition from minute/hour/day rollups without reading individual source rows. Data in the currently open minute appears after that minute closes and the worker processes it.
@@ -282,8 +292,10 @@ The worker starts from `src/instrumentation.ts`, following the existing backgrou
 Conservative configurable defaults:
 
 ```text
-DASHBOARD_ROLLUP_BATCH_SIZE=200
-DASHBOARD_ROLLUP_PAUSE_MS=250
+DASHBOARD_ROLLUP_WORKER_ENABLED=false
+DASHBOARD_ROLLUP_READS_ENABLED=false
+DASHBOARD_ROLLUP_BATCH_SIZE=100
+DASHBOARD_ROLLUP_PAUSE_MS=500
 DASHBOARD_ROLLUP_STATEMENT_TIMEOUT_MS=5000
 ```
 
@@ -310,20 +322,16 @@ At version initialization, bounded indexed lookups establish the lanes:
 - `source_boundary_id` comes from `ORDER BY id DESC LIMIT 1`.
 - `live_cursor_id` starts at `source_boundary_id`.
 - `history_cursor_id` starts immediately above `source_boundary_id` and moves downward through every initial source row.
-- If a verified time-leading index exists, the newest timestamp comes from `ORDER BY created_at DESC, id DESC LIMIT 1`; `recent_cutoff` is 31 days before that timestamp and the recent cursor starts at that cutoff.
-- Numeric gaps observed between adjacent IDs are persisted for later bounded probing rather than assumed to be permanently absent.
+- Numeric gaps observed between the prior cursor and returned IDs, between adjacent returned IDs, and at the exhausted positive-ID tail are persisted for later bounded probing rather than assumed to be permanently absent.
 
-The worker alternates bounded work rather than running an unbounded loop:
+The worker repeats a weighted bounded schedule:
 
-1. Keep the active version's live lane and due gap reconciliation current.
-2. Keep the building version's live lane current.
-3. Process one additional due ID-gap probe when scheduled.
-4. While the building version's recent history is incomplete, process one recent batch after a configurable number of live batches.
-5. After recent history completes, process building-version historical batches using the same weighted schedule.
+1. due gap reconciliation remains eligible first;
+2. three live opportunities;
+3. one history/backfill opportunity;
+4. the configured pause before the next transaction.
 
-During the first build there is no active-version lane. During a later formula rebuild, the old active version continues ingesting new rows while the new version backfills. Exactly one batch transaction runs at a time across all versions and instances.
-
-The default weighting is three live opportunities for one backfill opportunity. If no live work exists, the worker can use that opportunity for backfill, but still observes the inter-batch pause.
+During the first build there is no active-version lane. During a later formula rebuild, the old active version continues ingesting new rows while the new version backfills. Exactly one batch transaction runs at a time across all versions and instances. A backfill opportunity intentionally skips live work so history cannot starve under continuous ingestion.
 
 ### Live Lane
 
@@ -337,24 +345,6 @@ LIMIT $batch_size;
 
 The transaction records any skipped numeric range between the prior cursor and returned IDs, claims unprocessed source IDs, accumulates only newly claimed rows, and advances `live_cursor_id` to the largest returned ID.
 
-### Recent Lane
-
-When a suitable leading `created_at` index exists, initialize `recent_cutoff` with enough safety coverage for the 30-day range and process:
-
-```sql
-SELECT ...
-FROM logs
-WHERE id <= $source_boundary_id
-  AND created_at >= $recent_cutoff
-  AND (created_at, id) > ($cursor_created_at, $cursor_id)
-ORDER BY created_at ASC, id ASC
-LIMIT $batch_size;
-```
-
-The recent query may overlap rows later visited by the historical lane. Processed-source claims make the overlap safe. The cutoff includes a one-day safety margin, so the initial lane covers at least 31 days. `recent_complete` becomes true only after this keyset query is exhausted, all fetched rows are durably claimed, the live lane has caught up, and recent-period ID gaps have passed a bounded grace/probe cycle. Permanently empty sequence gaps do not block readiness.
-
-If the required time-leading index is absent, the application does not create it and does not run a potentially expensive recent query. It uses only the ID-based historical lane; `30d` remains unavailable until full history completes.
-
 ### Historical Lane
 
 ```sql
@@ -366,11 +356,11 @@ ORDER BY id DESC
 LIMIT $batch_size;
 ```
 
-The transaction records numeric gaps between returned IDs, claims and accumulates only unprocessed rows, then moves `history_cursor_id` below the smallest returned ID. When the initial ID walk is exhausted and no immediately due gap probe contains a committed row, `history_complete` becomes true and `all` can be served. Permanently empty gaps remain on low-frequency bounded reconciliation without blocking readiness.
+The transaction records numeric gaps against the prior exclusive cursor and between returned IDs, claims and accumulates only unprocessed rows, then moves `history_cursor_id` to the smallest returned ID (the next exclusive upper bound). An empty terminal walk records the remaining positive-ID interval for a bounded probe before readiness. When the ID walk is exhausted and every recorded gap has been probed at least once, `history_complete` becomes true and the version can activate. Permanently empty gaps remain on low-frequency bounded reconciliation without blocking readiness after that probe.
 
 ## Rollup Upsert
 
-Each normalized source log contributes to all 16 fixed dimension masks at four grains: minute, hour, day, and all time. This creates at most 64 in-memory cells per source row before batch-level combination. Rows sharing a mask, dimension key, and bucket within the batch are combined in memory.
+Each normalized source log contributes to the six sparse masks at four grains: minute, hour, day, and all time. This creates at most 24 in-memory cells per source row before batch-level combination. Rows sharing a mask, dimension key, and bucket within the batch are combined in memory.
 
 The database uses additive `INSERT ... ON CONFLICT DO UPDATE` operations:
 
@@ -390,7 +380,7 @@ The first release routes these requests to rollups:
 - `preset=30d`;
 - `preset=all`;
 - token-detail requests opened from either range;
-- custom ranges longer than seven days once the required rollup coverage is ready.
+- invalid custom ranges and custom ranges longer than seven days remain unavailable in the first release; they never fall back to raw history.
 
 Short presets retain their existing query path initially. This keeps the change focused while the new rollup is validated. The permanent schema supports moving all presets later without another data rebuild.
 
@@ -426,16 +416,9 @@ Token detail uses a separate on-demand rollup query restricted to the selected t
 
 ### Filter Semantics
 
-For a current filter mask `F`:
+For requests with no filter, the page reads sparse masks `0`, `1`, `2`, `4`, and `8` for the exact output being computed. If any token/user/model/channel filter is present, the page reads mask `15` and applies the bound predicates before regrouping. Token detail also reads mask `15` with the selected token restriction.
 
-- summary and trend read mask `F`;
-- active-user count reads `F | user` and counts distinct non-null raw user IDs;
-- active-channel count reads `F | channel` and counts distinct non-null raw channel IDs;
-- each ranking or stability section reads `F | groupedDimension` and applies the legacy coalesce/regrouping semantics to nullable dimension values;
-- token and channel ranking display fallbacks aggregate the range-local representative fields from the selected rollup rows;
-- token detail adds the selected token bit and then uses the corresponding model/channel masks.
-
-This means arbitrary current filter combinations remain exact without scanning and regrouping mask `15` for every request. The rollup dimension key preserves:
+The rollup dimension key preserves:
 
 - token name substring;
 - exact log username;
@@ -457,9 +440,9 @@ For rollup-backed ranges:
 
 Readiness is explicit and never causes fallback computation:
 
-- During the initial build with no active version, `30d` is ready when the building version has complete recent coverage through the live watermark. During later rebuilds, the old active version remains in use until atomic activation.
-- `all` is ready only on an active version whose historical backfill is complete and whose live lane is current enough to expose a closed-minute watermark.
-- A long custom range is ready when its start is at or after the processed historical lower bound.
+- `30d` and `all` read only an active version whose historical backfill is complete and whose live lane provides a closed-minute watermark.
+- Both presets become available together in this first release; the building version is never exposed.
+- Invalid custom ranges or custom ranges longer than seven days are unavailable and never fall back to raw history.
 
 If unavailable, the page renders a status panel such as:
 
@@ -490,8 +473,7 @@ This behavior is intentional: the rollup is a durable analytics record, not a ca
 - Advisory lock unavailable: skip this attempt without error.
 - Statement timeout: rollback the batch; log duration and retry later. Operators can lower batch size.
 - Source table replacement or newest-ID regression behind the live cursor: stop and require an explicit new rollup version or operator reset. Deletion of already-processed old rows remains allowed.
-- Missing recent index: skip the recent lane; continue safe ID-based history batches.
-- Page query failure: show the section error boundary; never retry against raw logs for a long range.
+- Page query failure: show the safe long-range error state; never retry against raw logs.
 
 ## Observability
 
@@ -532,14 +514,14 @@ Add focused unit tests for:
 
 - metric extraction parity with the current cache-token, Anthropic input-token, first-token-latency, response-time, and output-speed formulas;
 - dimension masks, hashing, and range-local representative-field updates preserve `NULL`, empty-string, zero, and legacy display semantics;
-- all 16 masks are emitted exactly once per claimed source;
+- all six sparse masks are emitted exactly once per claimed source;
 - minute/hour/Asia-Shanghai-day bucket selection;
 - half-open range parsing and rollup range decomposition without overlap or gaps;
 - in-batch grouping, processed-source claiming, and additive metric merging;
-- live/recent/history overlap is idempotent;
+- live/history retries and gap probes are idempotent;
 - out-of-order source-ID commits are retained as bounded gap ranges and eventually processed;
 - worker scheduling and non-overlap;
-- readiness decisions for 30-day, all-time, and custom ranges;
+- readiness decisions for jointly enabled 30-day/all-time presets and unavailable long custom ranges;
 - permanent-history behavior;
 - formula-version rebuild keeps the active version's live lane current until atomic activation;
 - long-range query selection never choosing the legacy raw path.
@@ -555,14 +537,13 @@ Add database-facing tests with a temporary fixture schema or mocked query layer 
 - page queries for `30d` and `all` contain no `FROM logs` reference;
 - token-detail under long ranges contains no `FROM logs` reference.
 
-Parity fixtures compare legacy and rollup results for a small controlled log set across:
+Parity fixtures compare legacy formulas and rollup results for a small controlled log set across:
 
 - no filters;
 - each individual filter;
 - combined filters;
 - `30d`;
 - `all`;
-- custom minute-aligned ranges;
 - malformed JSON follows the new safe behavior while valid fixtures preserve the previous metric results;
 - boundary timestamps.
 
@@ -593,7 +574,7 @@ npm run build
 
 With a staging database, additionally inspect:
 
-- catalog detection of `logs(id)` and any `(created_at, id)` index;
+- catalog detection of a usable indexed `logs(id)` cursor;
 - worker batch logs and statement duration;
 - request SQL logging proving no raw-log query for `30d`/`all`;
 - `EXPLAIN (ANALYZE, BUFFERS)` for rollup page queries only;
@@ -602,12 +583,11 @@ With a staging database, additionally inspect:
 ## Deployment and Rollout
 
 1. Deploy schema and worker with long-range rollup reads disabled.
-2. Verify live batches, advisory locking, transaction behavior, and CPU limits.
-3. Allow recent/history backfill to progress under conservative defaults.
-4. Enable `30d` automatically only after readiness criteria pass.
-5. Compare controlled legacy and rollup fixtures before activating `all`.
-6. Enable `all` only after historical completion.
-7. Keep legacy long-range functions temporarily for rollback, but make them unreachable from the `30d`/`all` request dispatcher.
-8. Remove legacy long-range code only after production parity and resource monitoring are satisfactory.
+2. Verify live/history/gap batches, advisory locking, transaction behavior, and CPU limits.
+3. Allow full history backfill to progress under conservative defaults.
+4. After historical completion, gap-readiness, live catch-up, and atomic activation, enable `30d` and `all` reads together.
+5. Compare controlled formula-parity fixtures before enabling reads.
+6. Keep legacy long-range functions unreachable from the `30d`/`all` request dispatcher.
+7. Remove legacy long-range code only after production parity and resource monitoring are satisfactory.
 
 Rollback disables rollup-backed routing and the worker. It must not automatically re-enable expensive `30d`/`all` raw queries; those filters remain unavailable until an operator explicitly chooses otherwise.
