@@ -39,11 +39,16 @@ function throwInvalidInteger(label: string, value: unknown): never {
   throw new TypeError(`invalid ${label}: ${String(value)}`);
 }
 
-/** Parse required integer identifiers/timestamps. Throws on invalid values. */
+/** True only when a JS number can be converted to bigint without rounding. */
+function isSafeIntegerNumber(value: number): boolean {
+  return Number.isSafeInteger(value);
+}
+
+/** Parse required integer identifiers. Throws on invalid/unsafe number values. */
 function parseRequiredBigInt(label: string, value: string | number | bigint): bigint {
   if (typeof value === "bigint") return value;
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    if (!isSafeIntegerNumber(value)) {
       throwInvalidInteger(label, value);
     }
     return BigInt(value);
@@ -62,24 +67,20 @@ function parseRequiredBigInt(label: string, value: string | number | bigint): bi
   throwInvalidInteger(label, value);
 }
 
-/** Parse required created_at as finite unix seconds (number). */
+/** Parse required created_at as finite integer unix seconds (number). No truncation. */
 function parseRequiredCreatedAt(value: string | number | bigint): number {
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) {
+    if (!isSafeIntegerNumber(value)) {
       throw new TypeError(`invalid created_at: ${String(value)}`);
     }
-    return Math.trunc(value);
+    return value;
   }
   if (typeof value === "bigint") {
-    if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) {
-      // createdAt is used for bucket math as number; still keep exact check.
-      const asNumber = Number(value);
-      if (!Number.isSafeInteger(asNumber)) {
-        throw new TypeError(`invalid created_at: ${String(value)}`);
-      }
-      return asNumber;
+    const asNumber = Number(value);
+    if (!Number.isSafeInteger(asNumber) || BigInt(asNumber) !== value) {
+      throw new TypeError(`invalid created_at: ${String(value)}`);
     }
-    return Number(value);
+    return asNumber;
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
@@ -88,7 +89,7 @@ function parseRequiredCreatedAt(value: string | number | bigint): number {
     }
     const asBig = BigInt(trimmed);
     const asNumber = Number(asBig);
-    if (!Number.isSafeInteger(asNumber)) {
+    if (!Number.isSafeInteger(asNumber) || BigInt(asNumber) !== asBig) {
       throw new TypeError(`invalid created_at: ${String(value)}`);
     }
     return asNumber;
@@ -97,8 +98,8 @@ function parseRequiredCreatedAt(value: string | number | bigint): number {
 }
 
 /**
- * Optional bigint IDs: null/undefined/"" → null; invalid → null (and mark diagnostic via caller).
- * Does not throw for optional fields.
+ * Optional bigint IDs: null/undefined/"" → null; invalid/unsafe number → null + invalid.
+ * Does not throw for optional fields. Exact string integers of any magnitude are accepted.
  */
 function parseOptionalBigInt(
   value: string | number | bigint | null | undefined,
@@ -106,7 +107,7 @@ function parseOptionalBigInt(
   if (value === null || value === undefined) return { value: null, invalid: false };
   if (typeof value === "bigint") return { value, invalid: false };
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    if (!isSafeIntegerNumber(value)) {
       return { value: null, invalid: true };
     }
     return { value: BigInt(value), invalid: false };
@@ -125,7 +126,8 @@ function parseOptionalBigInt(
 }
 
 /**
- * Token metric integers: invalid → BigInt(0) and invalid flag. Exact bigint; no Number rounding.
+ * Token metric integers: invalid/unsafe number → BigInt(0) + invalid flag.
+ * Exact bigint; never BigInt(rounded number). Exact integer strings remain supported.
  */
 function parseTokenMetric(
   value: string | number | bigint | null | undefined,
@@ -133,7 +135,7 @@ function parseTokenMetric(
   if (value === null || value === undefined) return { value: BigInt(0), invalid: false };
   if (typeof value === "bigint") return { value, invalid: false };
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    if (!isSafeIntegerNumber(value)) {
       return { value: BigInt(0), invalid: true };
     }
     return { value: BigInt(value), invalid: false };
@@ -187,22 +189,28 @@ function emptyToNull(value: string | null | undefined): string | null {
   return value === "" ? null : value;
 }
 
-function parseOtherJsonFieldAsBigInt(value: unknown): bigint {
-  if (typeof value === "bigint") return value;
+/**
+ * JSON integer field → bigint. Unsafe/non-integer numbers return 0 with invalid=true
+ * so the row can be marked malformed rather than silently rounded.
+ */
+function parseOtherJsonFieldAsBigInt(value: unknown): { value: bigint; invalid: boolean } {
+  if (typeof value === "bigint") return { value, invalid: false };
   if (typeof value === "number") {
-    if (!Number.isFinite(value) || !Number.isInteger(value)) return BigInt(0);
-    return BigInt(value);
+    if (!isSafeIntegerNumber(value)) return { value: BigInt(0), invalid: true };
+    return { value: BigInt(value), invalid: false };
   }
   if (typeof value === "string") {
     const trimmed = value.trim();
-    if (trimmed === "" || !INTEGER_PATTERN.test(trimmed)) return BigInt(0);
+    if (trimmed === "") return { value: BigInt(0), invalid: false };
+    if (!INTEGER_PATTERN.test(trimmed)) return { value: BigInt(0), invalid: true };
     try {
-      return BigInt(trimmed);
+      return { value: BigInt(trimmed), invalid: false };
     } catch {
-      return BigInt(0);
+      return { value: BigInt(0), invalid: true };
     }
   }
-  return BigInt(0);
+  if (value === null || value === undefined) return { value: BigInt(0), invalid: false };
+  return { value: BigInt(0), invalid: true };
 }
 
 function parseFrt(value: unknown): number | null {
@@ -268,19 +276,23 @@ function parseOther(other: string | null): ParsedOther {
   const fiveMin = parseOtherJsonFieldAsBigInt(obj.cache_creation_tokens_5m);
   const oneHour = parseOtherJsonFieldAsBigInt(obj.cache_creation_tokens_1h);
   const creation = parseOtherJsonFieldAsBigInt(obj.cache_creation_tokens);
+  const integerFieldInvalid =
+    baseCache.invalid || fiveMin.invalid || oneHour.invalid || creation.invalid;
   const creationPart =
-    fiveMin > BigInt(0) || oneHour > BigInt(0) ? fiveMin + oneHour : creation;
-  const cacheTokens = baseCache + creationPart;
+    fiveMin.value > BigInt(0) || oneHour.value > BigInt(0)
+      ? fiveMin.value + oneHour.value
+      : creation.value;
+  const cacheTokens = baseCache.value + creationPart;
 
   const usageSemantic =
     typeof obj.usage_semantic === "string" ? obj.usage_semantic : null;
   const firstTokenLatency = parseFrt(obj.frt);
 
   return {
-    malformedOther: false,
-    cacheTokens,
-    usageSemantic,
-    firstTokenLatency,
+    malformedOther: integerFieldInvalid,
+    cacheTokens: integerFieldInvalid ? BigInt(0) : cacheTokens,
+    usageSemantic: integerFieldInvalid ? null : usageSemantic,
+    firstTokenLatency: integerFieldInvalid ? null : firstTokenLatency,
   };
 }
 
@@ -336,7 +348,16 @@ function normalizeFormulaV1(row: DashboardSourceLogRow): NormalizedDashboardLog 
     useTime.value > 0 &&
     completion.value > BigInt(0)
   ) {
-    outputTokensPerSec = Number(completion.value) / useTime.value;
+    // Reject speed contribution when completion cannot convert to a safe number.
+    if (
+      completion.value <= BigInt(Number.MAX_SAFE_INTEGER) &&
+      completion.value >= BigInt(Number.MIN_SAFE_INTEGER)
+    ) {
+      const completionNumber = Number(completion.value);
+      if (Number.isSafeInteger(completionNumber)) {
+        outputTokensPerSec = completionNumber / useTime.value;
+      }
+    }
   }
 
   return {
@@ -451,9 +472,12 @@ export function assertDimensionKeyMatchesStored(
   }
 }
 
+export type DashboardDimensionHashFn = (key: DashboardDimensionKey) => Buffer;
+
 function buildKeyForMask(
   row: NormalizedDashboardLog,
   mask: DashboardRollupMask,
+  hashFn: DashboardDimensionHashFn = hashDashboardDimensionKey,
 ): HashedDashboardDimensionKey {
   const includeToken = (mask & DASHBOARD_DIMENSION_BITS.token) !== 0;
   const includeUser = (mask & DASHBOARD_DIMENSION_BITS.user) !== 0;
@@ -469,13 +493,14 @@ function buildKeyForMask(
     modelName: includeModel ? row.modelName : null,
     channelId: includeChannel ? row.channelId : null,
   };
-  return { ...key, hash: hashDashboardDimensionKey(key) };
+  return { ...key, hash: hashFn(key) };
 }
 
 export function buildDashboardDimensionKeys(
   row: NormalizedDashboardLog,
+  hashFn: DashboardDimensionHashFn = hashDashboardDimensionKey,
 ): HashedDashboardDimensionKey[] {
-  return DASHBOARD_DIMENSION_MASKS.map((mask) => buildKeyForMask(row, mask));
+  return DASHBOARD_DIMENSION_MASKS.map((mask) => buildKeyForMask(row, mask, hashFn));
 }
 
 function toMetrics(row: NormalizedDashboardLog): DashboardRollupMetricTotals {
@@ -514,8 +539,9 @@ const GRAIN_SPECS: Array<{ grain: DashboardRollupGrain; bucket: (ts: number) => 
 export function emitDashboardRollupCells(
   row: NormalizedDashboardLog,
   keys?: HashedDashboardDimensionKey[],
+  hashFn: DashboardDimensionHashFn = hashDashboardDimensionKey,
 ): PendingDashboardRollupCell[] {
-  const dimensionKeys = keys ?? buildDashboardDimensionKeys(row);
+  const dimensionKeys = keys ?? buildDashboardDimensionKeys(row, hashFn);
   const metrics = toMetrics(row);
   const cells: PendingDashboardRollupCell[] = [];
   for (const key of dimensionKeys) {
@@ -585,37 +611,47 @@ function mergeMetrics(
   };
 }
 
-function cellMergeKey(cell: PendingDashboardRollupCell): string {
-  const hash = cell.dimensionHash ?? hashDashboardDimensionKey(cell.dimension);
+function cellMergeKey(
+  cell: PendingDashboardRollupCell,
+  hashFn: DashboardDimensionHashFn = hashDashboardDimensionKey,
+): string {
+  const hash = cell.dimensionHash ?? hashFn(cell.dimension);
   return `${hash.toString("hex")}|${cell.grain}|${cell.bucketStart}`;
 }
 
-export function accumulateDashboardRollupRows(
-  rows: DashboardSourceLogRow[],
-  formula?: DashboardRollupFormula,
+/**
+ * Accumulate already-normalized rows into dimensions + cells.
+ * `hashFn` is production-generic (defaults to SHA-256) so callers/tests can inject
+ * an alternate deterministic hash without a test-only API surface.
+ */
+export function accumulateNormalizedDashboardRows(
+  rows: NormalizedDashboardLog[],
+  hashFn: DashboardDimensionHashFn = hashDashboardDimensionKey,
 ): {
   dimensions: HashedDashboardDimensionKey[];
   cells: PendingDashboardRollupCell[];
   malformedOtherRows: number;
 } {
-  const active = formula ?? getDashboardRollupFormula(DASHBOARD_ROLLUP_VERSION);
   const dimensionByHash = new Map<string, HashedDashboardDimensionKey>();
   const cellByKey = new Map<string, PendingDashboardRollupCell>();
   let malformedOtherRows = 0;
 
-  for (const source of rows) {
-    const normalized = active.normalize(source);
+  for (const normalized of rows) {
     if (normalized.malformedOther) malformedOtherRows += 1;
-    const keys = buildDashboardDimensionKeys(normalized);
+    const keys = buildDashboardDimensionKeys(normalized, hashFn);
     for (const key of keys) {
       const hex = key.hash.toString("hex");
-      if (!dimensionByHash.has(hex)) {
+      const existingKey = dimensionByHash.get(hex);
+      if (!existingKey) {
         dimensionByHash.set(hex, key);
+      } else {
+        // Fatal hash collision: refuse to merge mismatched stored key values.
+        assertDimensionKeyMatchesStored(key, existingKey);
       }
     }
-    const emitted = emitDashboardRollupCells(normalized, keys);
+    const emitted = emitDashboardRollupCells(normalized, keys, hashFn);
     for (const cell of emitted) {
-      const mergeKey = cellMergeKey(cell);
+      const mergeKey = cellMergeKey(cell, hashFn);
       const existing = cellByKey.get(mergeKey);
       if (!existing) {
         cellByKey.set(mergeKey, {
@@ -633,4 +669,18 @@ export function accumulateDashboardRollupRows(
     cells: [...cellByKey.values()],
     malformedOtherRows,
   };
+}
+
+export function accumulateDashboardRollupRows(
+  rows: DashboardSourceLogRow[],
+  formula?: DashboardRollupFormula,
+  hashFn: DashboardDimensionHashFn = hashDashboardDimensionKey,
+): {
+  dimensions: HashedDashboardDimensionKey[];
+  cells: PendingDashboardRollupCell[];
+  malformedOtherRows: number;
+} {
+  const active = formula ?? getDashboardRollupFormula(DASHBOARD_ROLLUP_VERSION);
+  const normalizedRows = rows.map((source) => active.normalize(source));
+  return accumulateNormalizedDashboardRows(normalizedRows, hashFn);
 }

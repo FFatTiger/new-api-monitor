@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import { DASHBOARD_DIMENSION_MASKS, DASHBOARD_ROLLUP_GRAINS } from "./rollup-config.ts";
 import {
   accumulateDashboardRollupRows,
+  accumulateNormalizedDashboardRows,
   assertDimensionKeyMatchesStored,
   buildDashboardDimensionKeys,
   emitDashboardRollupCells,
@@ -184,6 +185,61 @@ describe("dashboard rollup normalizer formula v1", () => {
     assert.equal(normalized.inputTokens, big);
     assert.equal(normalized.outputTokens, big + BigInt(3));
     assert.equal(normalized.cacheTokens, big);
+  });
+
+  it("rejects unsafe number integers instead of BigInt-rounding them", () => {
+    const unsafe = Number.MAX_SAFE_INTEGER + 1; // not Number.isSafeInteger
+    assert.equal(Number.isSafeInteger(unsafe), false);
+
+    assert.throws(() => normalizeDashboardSourceRow(baseRow({ id: unsafe })), /invalid id/i);
+
+    const optionalId = normalizeDashboardSourceRow(baseRow({ token_id: unsafe, user_id: unsafe, channel_id: unsafe }));
+    assert.equal(optionalId.tokenId, null);
+    assert.equal(optionalId.userId, null);
+    assert.equal(optionalId.channelId, null);
+
+    const tokens = normalizeDashboardSourceRow(
+      baseRow({
+        prompt_tokens: unsafe,
+        completion_tokens: unsafe,
+        other: null,
+      }),
+    );
+    assert.equal(tokens.inputTokens, BigInt(0));
+    assert.equal(tokens.outputTokens, BigInt(0));
+    assert.equal(tokens.malformedOther, true);
+
+    // JSON integer fields that arrive as already-parsed unsafe numbers (via JSON text that
+    // cannot be exact) are zeroed with diagnostic rather than BigInt(rounded).
+    // Construct other by parsing then re-injecting is not available from source string alone
+    // for unsafe magnitudes; use a formula path through object-like JSON with safe strings still ok.
+    // Direct path: large exact string still works (covered above). For number form inside JSON,
+    // JSON.stringify of unsafe yields a rounded decimal; parseOther receives that number after parse.
+    const otherWithUnsafeNumber = `{"cache_tokens":${unsafe},"usage_semantic":"openai"}`;
+    const fromOther = normalizeDashboardSourceRow(baseRow({ other: otherWithUnsafeNumber }));
+    assert.equal(fromOther.cacheTokens, BigInt(0));
+    assert.equal(fromOther.malformedOther, true);
+  });
+
+  it("rejects non-integer created_at numbers instead of truncating", () => {
+    assert.throws(
+      () => normalizeDashboardSourceRow(baseRow({ created_at: 1_700_000_030.75 })),
+      /invalid created_at/i,
+    );
+  });
+
+  it("does not emit rounded outputTokensPerSec when completion exceeds safe number conversion", () => {
+    const huge = BigInt("9007199254740993");
+    const normalized = normalizeDashboardSourceRow(
+      baseRow({
+        type: 2,
+        use_time: 2,
+        completion_tokens: huge.toString(),
+        other: null,
+      }),
+    );
+    assert.equal(normalized.outputTokens, huge);
+    assert.equal(normalized.outputTokensPerSec, null);
   });
 
   it("normalizes null/blank model names to Unknown", () => {
@@ -491,5 +547,49 @@ describe("dashboard rollup cell emission and accumulation", () => {
 
   it("rejects unknown formula versions", () => {
     assert.throws(() => getDashboardRollupFormula(999), /unknown/i);
+  });
+
+  it("throws on dimension hash collision before merging mismatched keys", () => {
+    const a = normalizeDashboardSourceRow(
+      baseRow({
+        id: 1,
+        token_id: 1,
+        token_name: "alpha",
+        user_id: null,
+        username: null,
+        model_name: null,
+        channel_id: null,
+        channel_name: null,
+      }),
+    );
+    const b = normalizeDashboardSourceRow(
+      baseRow({
+        id: 2,
+        token_id: 2,
+        token_name: "beta",
+        user_id: null,
+        username: null,
+        model_name: null,
+        channel_id: null,
+        channel_name: null,
+      }),
+    );
+
+    // Production-generic injected hash: encode only the mask so different masks still
+    // differ within a row, but distinct token/user/model/channel values collide across rows.
+    const hashFn = (key: DashboardDimensionKey) => {
+      const buf = Buffer.alloc(32, 0);
+      buf.writeUInt16BE(key.dimensionMask, 0);
+      return buf;
+    };
+
+    assert.throws(
+      () => accumulateNormalizedDashboardRows([a, b], hashFn),
+      /collision|mismatch/i,
+    );
+
+    // Same dimension identity must still merge cleanly under the injected hash.
+    const same = accumulateNormalizedDashboardRows([a, { ...a, sourceId: BigInt(99) }], hashFn);
+    assert.equal(same.dimensions.length, 6);
   });
 });
