@@ -2,11 +2,13 @@ import type {
   DashboardFilters,
   FilterPreset,
   SearchParamsInput,
+  TokenDetailData,
   TrendGranularity,
 } from "../queries/dashboard.ts";
 import {
   createDashboardRollupPlan,
   type DashboardRollupQueryPlan,
+  type DashboardRollupTokenDetailResult,
 } from "./rollup-query.ts";
 import type { DashboardRollupReadiness } from "./types.ts";
 
@@ -361,4 +363,116 @@ export function needsSourceBoundsForRouting(preset: FilterPreset): boolean {
 
 export function peekDashboardPreset(searchParams: SearchParamsInput): FilterPreset {
   return parsePreset(searchParams);
+}
+
+export type TokenDetailMode = DashboardQueryPlan["kind"];
+
+/**
+ * Pure mode projection for token-detail routing tests and call sites.
+ * Delegates classification to buildDashboardQueryPlan (does not reimplement rules).
+ */
+export function resolveTokenDetailMode(
+  filters: DashboardFilters,
+  readiness: DashboardRollupReadiness,
+  readsEnabled: boolean,
+  nowSeconds?: number,
+): TokenDetailMode {
+  return buildDashboardQueryPlan(filters, readiness, readsEnabled, nowSeconds).kind;
+}
+
+const TOKEN_DETAIL_NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, must-revalidate",
+} as const;
+
+const TOKEN_DETAIL_GENERIC_ERROR = "Failed to fetch token detail";
+
+export interface TokenDetailRequestInput {
+  tokenId: number;
+  tokenName: string;
+  filters: SearchParamsInput;
+}
+
+export interface TokenDetailHandlerResult {
+  status: number;
+  body: Record<string, unknown>;
+  headers: { "Cache-Control": string };
+}
+
+export interface TokenDetailHandlerDeps {
+  resolvePlan: (filters: SearchParamsInput) => Promise<DashboardQueryPlan>;
+  getLegacyDetail: (
+    filters: SearchParamsInput | DashboardFilters,
+    tokenId: number,
+    tokenName: string,
+  ) => Promise<TokenDetailData>;
+  getRollupDetail: (
+    plan: DashboardRollupQueryPlan,
+    token: { tokenId: number; tokenName: string },
+  ) => Promise<DashboardRollupTokenDetailResult>;
+  logError?: (error: unknown) => void;
+}
+
+function tokenDetailResponse(
+  status: number,
+  body: Record<string, unknown>,
+): TokenDetailHandlerResult {
+  return {
+    status,
+    body,
+    headers: { ...TOKEN_DETAIL_NO_STORE_HEADERS },
+  };
+}
+
+/**
+ * Pure dependency-injected token-detail handler.
+ * Classifies once, never falls back from rollup/unavailable to legacy raw detail.
+ */
+export async function runTokenDetailRequest(
+  input: TokenDetailRequestInput,
+  deps: TokenDetailHandlerDeps,
+): Promise<TokenDetailHandlerResult> {
+  const { tokenId, tokenName, filters } = input;
+
+  if (!Number.isFinite(tokenId) || !tokenName) {
+    return tokenDetailResponse(400, { error: "Invalid token" });
+  }
+
+  // After long classification (rollup/unavailable), unexpected failures stay 503 and never legacy.
+  let longClassified = false;
+
+  try {
+    const plan = await deps.resolvePlan(filters);
+
+    if (plan.kind === "legacy") {
+      const detail = await deps.getLegacyDetail(plan.filters, tokenId, tokenName);
+      return tokenDetailResponse(200, { detail });
+    }
+
+    longClassified = true;
+
+    if (plan.kind === "unavailable") {
+      const readiness = plan.readiness;
+      // Unavailable plans always carry a non-ready readiness with safeMessage.
+      const error =
+        "safeMessage" in readiness
+          ? readiness.safeMessage
+          : "长期统计暂时不可用，请稍后重试。";
+      return tokenDetailResponse(503, {
+        error,
+        readiness,
+      });
+    }
+
+    // plan.kind === "rollup" — never call legacy after long classification
+    const rollupResult = await deps.getRollupDetail(plan, { tokenId, tokenName });
+    if (rollupResult.kind === "ready") {
+      return tokenDetailResponse(200, { detail: rollupResult.detail });
+    }
+    return tokenDetailResponse(503, { error: rollupResult.safeMessage });
+  } catch (error: unknown) {
+    deps.logError?.(error);
+    return tokenDetailResponse(longClassified ? 503 : 500, {
+      error: TOKEN_DETAIL_GENERIC_ERROR,
+    });
+  }
 }

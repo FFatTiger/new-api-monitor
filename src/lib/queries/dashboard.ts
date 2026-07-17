@@ -756,7 +756,7 @@ export async function getDashboardTrendData(searchParams: SearchParamsInput | Da
   };
 }
 
-export async function getTokenDetailData(searchParams: SearchParamsInput = {}, tokenId: number, tokenName: string): Promise<TokenDetailData> {
+export async function getTokenDetailData(searchParams: SearchParamsInput | DashboardFilters = {}, tokenId: number, tokenName: string): Promise<TokenDetailData> {
   const { whereSql, values, normalizedModelSql, cacheTokensSql } = await getDashboardQueryContext(searchParams);
   const { values: detailValues, cteSql } = buildTokenTargetsCte([{ tokenId, tokenName }], values);
   const detailBaseSql = `

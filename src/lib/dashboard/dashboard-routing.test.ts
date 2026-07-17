@@ -11,7 +11,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROUTING_SOURCE = join(__dirname, "dashboard-routing.ts");
 const PAGE_SOURCE = join(__dirname, "../../app/page.tsx");
 const DASHBOARD_QUERY_SOURCE = join(__dirname, "../queries/dashboard.ts");
+const TOKEN_DETAIL_ROUTE_SOURCE = join(__dirname, "../../app/api/token-detail/route.ts");
 const SEVEN_DAYS = 7 * 24 * 60 * 60;
+const NO_STORE_HEADERS = { "Cache-Control": "no-store, no-cache, must-revalidate" } as const;
 
 function baseFilters(overrides: Partial<DashboardFilters> = {}): DashboardFilters {
   return {
@@ -340,5 +342,347 @@ describe("page and shell long-range safety (static)", () => {
     assert.doesNotMatch(source, /from ["']@\/lib\/db["']/);
     assert.doesNotMatch(source, /from ["']\.\.\/db\.ts["']/);
     assert.doesNotMatch(source, /\bquery\s*\(/);
+  });
+});
+
+describe("token detail routing", () => {
+  it("uses legacy for short presets and rollup/unavailable for long readiness states", async () => {
+    const { resolveTokenDetailMode } = await import("./dashboard-routing.ts");
+    assert.equal(
+      resolveTokenDetailMode(
+        baseFilters({ preset: "7d" }),
+        ready,
+        true,
+      ),
+      "legacy",
+    );
+    assert.equal(
+      resolveTokenDetailMode(
+        baseFilters({ preset: "30d" }),
+        ready,
+        true,
+      ),
+      "rollup",
+    );
+    assert.equal(
+      resolveTokenDetailMode(
+        baseFilters({ preset: "all" }),
+        building,
+        true,
+      ),
+      "unavailable",
+    );
+    assert.equal(
+      resolveTokenDetailMode(
+        baseFilters({
+          preset: "custom",
+          startTimestamp: 1_700_000_000,
+          endTimestamp: 1_700_000_000 + 8 * 86400,
+        }),
+        ready,
+        true,
+      ),
+      "unavailable",
+    );
+  });
+
+  it("DI handler calls legacy only for legacy plans and never falls back after long classification", async () => {
+    const { runTokenDetailRequest } = await import("./dashboard-routing.ts");
+
+    const legacyDetail = {
+      firstUsedAt: 1,
+      activeModelCount: 1,
+      activeChannelCount: 0,
+      models: [],
+      channels: [],
+    };
+    const rollupDetail = {
+      firstUsedAt: 9,
+      activeModelCount: 2,
+      activeChannelCount: 1,
+      models: [],
+      channels: [],
+    };
+
+    const shortFilters = { preset: "7d" };
+    const legacyPlanFilters = baseFilters({ preset: "7d", windowLabel: "近 7 天" });
+    let legacyCalls = 0;
+    let rollupCalls = 0;
+    let resolveCalls = 0;
+    const legacyResult = await runTokenDetailRequest(
+      { tokenId: 0, tokenName: "tok", filters: shortFilters },
+      {
+        resolvePlan: async () => {
+          resolveCalls += 1;
+          return { kind: "legacy", filters: legacyPlanFilters };
+        },
+        getLegacyDetail: async (filters, tokenId, tokenName) => {
+          legacyCalls += 1;
+          // Must use resolved plan.filters so production skips re-resolve/bounds fetch.
+          assert.deepEqual(filters, legacyPlanFilters);
+          assert.notDeepEqual(filters, shortFilters);
+          assert.equal(tokenId, 0);
+          assert.equal(tokenName, "tok");
+          return legacyDetail;
+        },
+        getRollupDetail: async () => {
+          rollupCalls += 1;
+          throw new Error("rollup should not run for legacy");
+        },
+      },
+    );
+    assert.equal(legacyResult.status, 200);
+    assert.deepEqual(legacyResult.body, { detail: legacyDetail });
+    assert.deepEqual(legacyResult.headers, NO_STORE_HEADERS);
+    assert.equal(resolveCalls, 1);
+    assert.equal(legacyCalls, 1);
+    assert.equal(rollupCalls, 0);
+
+    const rollupPlan = {
+      kind: "rollup" as const,
+      filters: baseFilters({ preset: "30d" }),
+      version: 1,
+      preset: "30d" as const,
+      startTimestamp: 1,
+      endTimestamp: 2,
+      segments: [{ grain: 3 as const, start: 1, end: 2 }],
+    };
+    legacyCalls = 0;
+    rollupCalls = 0;
+    resolveCalls = 0;
+    const rollupReady = await runTokenDetailRequest(
+      { tokenId: 7, tokenName: "t7", filters: { preset: "30d" } },
+      {
+        resolvePlan: async () => {
+          resolveCalls += 1;
+          return rollupPlan;
+        },
+        getLegacyDetail: async () => {
+          legacyCalls += 1;
+          throw new Error("legacy must not run for rollup");
+        },
+        getRollupDetail: async (plan, token) => {
+          rollupCalls += 1;
+          assert.equal(plan.kind, "rollup");
+          assert.equal(token.tokenId, 7);
+          assert.equal(token.tokenName, "t7");
+          return { kind: "ready", detail: rollupDetail };
+        },
+      },
+    );
+    assert.equal(rollupReady.status, 200);
+    assert.deepEqual(rollupReady.body, { detail: rollupDetail });
+    assert.deepEqual(rollupReady.headers, NO_STORE_HEADERS);
+    assert.equal(resolveCalls, 1);
+    assert.equal(legacyCalls, 0);
+    assert.equal(rollupCalls, 1);
+
+    legacyCalls = 0;
+    rollupCalls = 0;
+    resolveCalls = 0;
+    const rollupError = await runTokenDetailRequest(
+      { tokenId: 7, tokenName: "t7", filters: { preset: "30d" } },
+      {
+        resolvePlan: async () => {
+          resolveCalls += 1;
+          return rollupPlan;
+        },
+        getLegacyDetail: async () => {
+          legacyCalls += 1;
+          throw new Error("no raw fallback after rollup error");
+        },
+        getRollupDetail: async () => {
+          rollupCalls += 1;
+          return { kind: "error", safeMessage: "长期统计暂时不可用，请稍后重试。" };
+        },
+      },
+    );
+    assert.equal(rollupError.status, 503);
+    assert.equal(rollupError.body.error, "长期统计暂时不可用，请稍后重试。");
+    assert.deepEqual(rollupError.headers, NO_STORE_HEADERS);
+    assert.equal(resolveCalls, 1);
+    assert.equal(legacyCalls, 0);
+    assert.equal(rollupCalls, 1);
+
+    legacyCalls = 0;
+    rollupCalls = 0;
+    resolveCalls = 0;
+    let loggedErrors = 0;
+    const rollupThrow = await runTokenDetailRequest(
+      { tokenId: 7, tokenName: "t7", filters: { preset: "30d" } },
+      {
+        resolvePlan: async () => {
+          resolveCalls += 1;
+          return rollupPlan;
+        },
+        getLegacyDetail: async () => {
+          legacyCalls += 1;
+          throw new Error("no raw fallback after rollup throw");
+        },
+        getRollupDetail: async () => {
+          rollupCalls += 1;
+          throw new Error("secret-rollup-stack");
+        },
+        logError: (error) => {
+          loggedErrors += 1;
+          assert.ok(error instanceof Error);
+        },
+      },
+    );
+    assert.equal(rollupThrow.status, 503);
+    assert.equal(rollupThrow.body.error, "Failed to fetch token detail");
+    assert.equal(JSON.stringify(rollupThrow.body).includes("secret-rollup-stack"), false);
+    assert.deepEqual(rollupThrow.headers, NO_STORE_HEADERS);
+    assert.equal(resolveCalls, 1);
+    assert.equal(legacyCalls, 0);
+    assert.equal(rollupCalls, 1);
+    assert.equal(loggedErrors, 1);
+
+    legacyCalls = 0;
+    rollupCalls = 0;
+    resolveCalls = 0;
+    const unavailableReadiness = building;
+    const unavailable = await runTokenDetailRequest(
+      { tokenId: 7, tokenName: "t7", filters: { preset: "all" } },
+      {
+        resolvePlan: async () => {
+          resolveCalls += 1;
+          return {
+            kind: "unavailable",
+            filters: baseFilters({ preset: "all" }),
+            readiness: unavailableReadiness,
+          };
+        },
+        getLegacyDetail: async () => {
+          legacyCalls += 1;
+          throw new Error("no raw fallback for unavailable");
+        },
+        getRollupDetail: async () => {
+          rollupCalls += 1;
+          throw new Error("rollup should not run for unavailable");
+        },
+      },
+    );
+    assert.equal(unavailable.status, 503);
+    assert.equal(unavailable.body.error, unavailableReadiness.safeMessage);
+    assert.deepEqual(unavailable.body.readiness, unavailableReadiness);
+    assert.deepEqual(unavailable.headers, NO_STORE_HEADERS);
+    assert.equal(resolveCalls, 1);
+    assert.equal(legacyCalls, 0);
+    assert.equal(rollupCalls, 0);
+  });
+
+  it("DI handler rejects invalid tokens and keeps unexpected errors generic without legacy fallback", async () => {
+    const { runTokenDetailRequest } = await import("./dashboard-routing.ts");
+    let legacyCalls = 0;
+    let resolveCalls = 0;
+
+    const invalid = await runTokenDetailRequest(
+      { tokenId: Number.NaN, tokenName: "", filters: { preset: "7d" } },
+      {
+        resolvePlan: async () => {
+          resolveCalls += 1;
+          throw new Error("should not classify invalid token");
+        },
+        getLegacyDetail: async () => {
+          legacyCalls += 1;
+          throw new Error("should not load");
+        },
+        getRollupDetail: async () => {
+          throw new Error("should not load");
+        },
+      },
+    );
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.body.error, "Invalid token");
+    assert.deepEqual(invalid.headers, NO_STORE_HEADERS);
+    assert.equal(resolveCalls, 0);
+    assert.equal(legacyCalls, 0);
+
+    // tokenId 0 with nonempty name remains valid
+    const zeroOk = await runTokenDetailRequest(
+      { tokenId: 0, tokenName: "Unknown", filters: { preset: "7d" } },
+      {
+        resolvePlan: async () => ({ kind: "legacy", filters: baseFilters({ preset: "7d" }) }),
+        getLegacyDetail: async (_f, tokenId, tokenName) => {
+          legacyCalls += 1;
+          assert.equal(tokenId, 0);
+          assert.equal(tokenName, "Unknown");
+          return {
+            firstUsedAt: 0,
+            activeModelCount: 0,
+            activeChannelCount: 0,
+            models: [],
+            channels: [],
+          };
+        },
+        getRollupDetail: async () => {
+          throw new Error("no");
+        },
+      },
+    );
+    assert.equal(zeroOk.status, 200);
+    assert.equal(legacyCalls, 1);
+
+    legacyCalls = 0;
+    const boom = await runTokenDetailRequest(
+      { tokenId: 1, tokenName: "x", filters: { preset: "30d" } },
+      {
+        resolvePlan: async () => {
+          throw new Error("secret-db-password-xyz");
+        },
+        getLegacyDetail: async () => {
+          legacyCalls += 1;
+          throw new Error("no fallback");
+        },
+        getRollupDetail: async () => {
+          throw new Error("no");
+        },
+      },
+    );
+    assert.equal(boom.status, 500);
+    assert.equal(boom.body.error, "Failed to fetch token detail");
+    assert.equal(JSON.stringify(boom.body).includes("secret-db-password-xyz"), false);
+    assert.deepEqual(boom.headers, NO_STORE_HEADERS);
+    assert.equal(legacyCalls, 0);
+  });
+
+  it("token-detail route classifies before loaders and has no catch fallback to legacy", () => {
+    const source = readFileSync(TOKEN_DETAIL_ROUTE_SOURCE, "utf8");
+    const routing = readFileSync(ROUTING_SOURCE, "utf8");
+    assert.match(source, /resolveDashboardQueryPlan/);
+    assert.match(source, /getDashboardRollupTokenDetail/);
+    assert.match(source, /runTokenDetailRequest/);
+    assert.match(source, /getTokenDetailData/);
+
+    // Route wires plan resolution + rollup before/instead of only legacy.
+    assert.ok(source.includes("resolvePlan: resolveDashboardQueryPlan"));
+    assert.ok(source.includes("getLegacyDetail: getTokenDetailData"));
+    assert.ok(source.includes("getRollupDetail: getDashboardRollupTokenDetail"));
+    assert.match(source, /headers:\s*result\.headers/);
+
+    // No catch-block fallback that re-invokes legacy detail after failure.
+    assert.doesNotMatch(
+      source,
+      /catch\s*\([^)]*\)\s*\{[\s\S]*getTokenDetailData/,
+      "route must not call getTokenDetailData inside catch fallback",
+    );
+    // Cache headers owned by DI handler used by the route.
+    assert.match(
+      routing,
+      /Cache-Control["']?\s*:\s*["']no-store, no-cache, must-revalidate["']/,
+    );
+    assert.match(routing, /export async function runTokenDetailRequest/);
+    assert.match(routing, /plan\.kind === ["']legacy["']/);
+    assert.match(routing, /plan\.kind === ["']unavailable["']/);
+    // After rollup classification, never call legacy detail.
+    assert.ok(routing.includes("// plan.kind === \"rollup\""));
+    assert.doesNotMatch(
+      routing.slice(routing.indexOf("// plan.kind === \"rollup\"")),
+      /getLegacyDetail/,
+      "rollup path must not call getLegacyDetail",
+    );
+    // Legacy load uses resolved plan.filters, not raw search params.
+    assert.match(routing, /getLegacyDetail\(\s*plan\.filters/);
   });
 });
