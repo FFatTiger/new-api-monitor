@@ -138,6 +138,9 @@ export type DashboardRollupReadiness =
       safeMessage: string;
     };
 
+/** Long-range rollup presets served by the rollup read layer (Task 7). */
+export type DashboardLongRangePreset = "30d" | "all";
+
 export type DashboardRollupWorkItem =
   | { lane: "live"; version: number }
   | { lane: "history"; version: number }
