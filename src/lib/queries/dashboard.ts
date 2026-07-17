@@ -12,15 +12,7 @@ import {
   getDashboardRollupReadiness,
 } from "@/lib/dashboard/rollup-query";
 
-const PRESET_SECONDS = {
-  "24h": 24 * 60 * 60,
-  "7d": 7 * 24 * 60 * 60,
-  "30d": 30 * 24 * 60 * 60,
-} as const;
-
-type FixedPreset = keyof typeof PRESET_SECONDS;
-
-export type FilterPreset = "today" | FixedPreset | "custom" | "all";
+export type FilterPreset = "today" | "24h" | "7d" | "30d" | "custom" | "all";
 export type TrendGranularity = "hour" | "day";
 export type SearchParamsInput = Record<string, string | string[] | undefined>;
 
@@ -208,14 +200,6 @@ interface TimeBoundsRow {
   max_ts: string | number | null;
 }
 
-function getFirstValue(value: string | string[] | undefined) {
-  if (Array.isArray(value)) {
-    return value[0] ?? "";
-  }
-
-  return value ?? "";
-}
-
 function toNumber(value: string | number | null | undefined, fallback = 0) {
   if (typeof value === "number") {
     return Number.isFinite(value) ? value : fallback;
@@ -229,167 +213,8 @@ function toNumber(value: string | number | null | undefined, fallback = 0) {
   return fallback;
 }
 
-function cleanText(value: string, maxLength = 100) {
-  return value.trim().slice(0, maxLength);
-}
-
-function normalizeModelName(value: string) {
-  return value.replace(/\s*\([^)]*\)\s*$/, "").trim();
-}
-
 function getNormalizedModelSql(expression: string) {
   return `COALESCE(NULLIF(BTRIM(regexp_replace(COALESCE(${expression}, ''), '\\s*\\([^)]*\\)$', '')), ''), 'Unknown')`;
-}
-
-const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
-const shanghaiDatePartsFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: SHANGHAI_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-const shanghaiDateTimePartsFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: SHANGHAI_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-function getShanghaiDateParts(date: Date) {
-  const parts = shanghaiDatePartsFormatter.formatToParts(date);
-  const year = Number(parts.find((part) => part.type === "year")?.value ?? "0");
-  const month = Number(parts.find((part) => part.type === "month")?.value ?? "0");
-  const day = Number(parts.find((part) => part.type === "day")?.value ?? "0");
-
-  return { year, month, day };
-}
-
-function getShanghaiDateTimeParts(date: Date) {
-  const parts = shanghaiDateTimePartsFormatter.formatToParts(date);
-  const year = Number(parts.find((part) => part.type === "year")?.value ?? "0");
-  const month = Number(parts.find((part) => part.type === "month")?.value ?? "0");
-  const day = Number(parts.find((part) => part.type === "day")?.value ?? "0");
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-
-  return { year, month, day, hour, minute };
-}
-
-function parseShanghaiDateTimeInput(value: string, endOfMinute = false) {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) {
-    return null;
-  }
-
-  const [datePart, timePart] = value.split("T");
-  const [year, month, day] = datePart.split("-").map(Number);
-  const [hour, minute] = timePart.split(":").map(Number);
-  const baseUtcSeconds = Date.UTC(year, month - 1, day, hour, minute, 0) / 1000;
-
-  return baseUtcSeconds - 8 * 60 * 60 + (endOfMinute ? 59 : 0);
-}
-
-function formatDateTimeInput(timestamp: number) {
-  const { year, month, day, hour, minute } = getShanghaiDateTimeParts(new Date(timestamp * 1000));
-  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-}
-
-function getTodayRangeInShanghai() {
-  const { year, month, day } = getShanghaiDateParts(new Date());
-  const dateString = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-  return {
-    startInput: `${dateString}T00:00`,
-    endInput: `${dateString}T23:59`,
-    startTimestamp: parseShanghaiDateTimeInput(`${dateString}T00:00`, false),
-    endTimestamp: parseShanghaiDateTimeInput(`${dateString}T23:59`, true),
-  };
-}
-
-function getWindowLabel(
-  preset: FilterPreset,
-  startTimestamp: number | null,
-  endTimestamp: number | null,
-) {
-  if (preset === "all") {
-    return "全部时间";
-  }
-
-  if (preset === "today") {
-    return "今天";
-  }
-
-  if (preset === "custom" && startTimestamp && endTimestamp) {
-    return `${formatDateTimeInput(startTimestamp)} 至 ${formatDateTimeInput(endTimestamp)}`;
-  }
-
-  if (preset === "24h") {
-    return "近 24 小时";
-  }
-
-  if (preset === "30d") {
-    return "近 30 天";
-  }
-
-  return "近 7 天";
-}
-
-function parseFilters(searchParams: SearchParamsInput, minTimestamp: number, maxTimestamp: number): DashboardFilters {
-  const rawPreset = getFirstValue(searchParams.preset);
-  const preset: FilterPreset =
-    rawPreset === "today" || rawPreset === "24h" || rawPreset === "7d" || rawPreset === "30d" || rawPreset === "custom" || rawPreset === "all"
-      ? rawPreset
-      : "today";
-
-  const token = cleanText(getFirstValue(searchParams.token));
-  const username = cleanText(getFirstValue(searchParams.username), 64);
-  const model = cleanText(normalizeModelName(getFirstValue(searchParams.model)), 128);
-  const channelId = cleanText(getFirstValue(searchParams.channelId), 20);
-  const startInput = cleanText(getFirstValue(searchParams.start), 16);
-  const endInput = cleanText(getFirstValue(searchParams.end), 16);
-  const todayRange = getTodayRangeInShanghai();
-
-  let startTimestamp: number | null = null;
-  let endTimestamp: number | null = maxTimestamp;
-
-  if (preset === "today") {
-    startTimestamp = todayRange.startTimestamp ?? minTimestamp;
-    endTimestamp = todayRange.endTimestamp ?? maxTimestamp;
-  } else if (preset === "custom") {
-    startTimestamp = parseShanghaiDateTimeInput(startInput, false) ?? minTimestamp;
-    endTimestamp = parseShanghaiDateTimeInput(endInput, true) ?? maxTimestamp;
-  } else if (preset === "all") {
-    startTimestamp = null;
-    endTimestamp = null;
-  } else {
-    startTimestamp = maxTimestamp - PRESET_SECONDS[preset];
-  }
-
-  if (startTimestamp !== null && endTimestamp !== null && startTimestamp > endTimestamp) {
-    [startTimestamp, endTimestamp] = [endTimestamp, startTimestamp];
-  }
-
-  const rangeSeconds =
-    startTimestamp !== null && endTimestamp !== null
-      ? Math.max(endTimestamp - startTimestamp, 0)
-      : Math.max(maxTimestamp - minTimestamp, 0);
-  const granularity: TrendGranularity = rangeSeconds <= 2 * 24 * 60 * 60 ? "hour" : "day";
-
-  return {
-    preset,
-    token,
-    username,
-    model,
-    channelId,
-    startInput: preset === "today" ? todayRange.startInput : startInput,
-    endInput: preset === "today" ? todayRange.endInput : endInput,
-    startTimestamp,
-    endTimestamp,
-    granularity,
-    windowLabel: getWindowLabel(preset, startTimestamp, endTimestamp),
-  };
 }
 
 function buildLogsWhere(filters: DashboardFilters, alias = "l") {

@@ -309,6 +309,32 @@ describe("page and shell long-range safety (static)", () => {
     );
   });
 
+  it("dashboard.ts has no second/unsafe legacy parseFilters or invalid custom source-bound fallbacks", () => {
+    const source = readFileSync(DASHBOARD_QUERY_SOURCE, "utf8");
+
+    // Dead duplicate parser must not remain beside parseDashboardRouteFilters.
+    assert.doesNotMatch(
+      source,
+      /function parseFilters\s*\(/,
+      "dashboard.ts must not keep a second legacy parseFilters",
+    );
+
+    // Invalid custom must never silently substitute source MIN/MAX bounds.
+    assert.doesNotMatch(
+      source,
+      /parseShanghaiDateTimeInput\([^)]*\)\s*\?\?\s*minTimestamp/,
+      "dashboard.ts must not fallback invalid custom start to minTimestamp",
+    );
+    assert.doesNotMatch(
+      source,
+      /parseShanghaiDateTimeInput\([^)]*\)\s*\?\?\s*maxTimestamp/,
+      "dashboard.ts must not fallback invalid custom end to maxTimestamp",
+    );
+
+    // Active routing parser remains the single source of filter parsing.
+    assert.match(source, /parseDashboardRouteFilters/);
+  });
+
   it("routing module does not import db/query clients", () => {
     const source = readFileSync(ROUTING_SOURCE, "utf8");
     assert.doesNotMatch(source, /from ["']@\/lib\/db["']/);
