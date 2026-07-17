@@ -399,6 +399,11 @@ export function getDashboardRollupFormula(version: number): DashboardRollupFormu
   return formula;
 }
 
+/** Sorted executable formula versions known to this process. */
+export function getExecutableDashboardRollupVersions(): number[] {
+  return Array.from(formulaRegistry.keys()).sort((a, b) => a - b);
+}
+
 export function normalizeDashboardSourceRow(
   row: DashboardSourceLogRow,
 ): NormalizedDashboardLog {
