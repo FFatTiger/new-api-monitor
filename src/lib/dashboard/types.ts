@@ -82,7 +82,46 @@ export interface PendingDashboardRollupCell {
   bucketStart: number;
   dimensionMask: DashboardRollupMask;
   dimension: DashboardDimensionKey;
+  /** Canonical dimension hash (SHA-256). Present when cells are emitted by the normalizer. */
+  dimensionHash?: Buffer;
   metrics: DashboardRollupMetricTotals;
+}
+
+/** Flat per-source normalized log used by formula-v1 and cell emission. */
+export interface NormalizedDashboardLog {
+  sourceId: bigint;
+  createdAt: number;
+  tokenId: bigint | null;
+  tokenName: string | null;
+  userId: bigint | null;
+  username: string | null;
+  modelName: string;
+  channelId: bigint | null;
+  channelName: string | null;
+  /** Always 1n for a single source contribution. */
+  requestCount: bigint;
+  inputTokens: bigint;
+  outputTokens: bigint;
+  cacheTokens: bigint;
+  /** 0n or 1n for a single source contribution. */
+  attemptCount: bigint;
+  /** 0n or 1n for a single source contribution. */
+  successCount: bigint;
+  /** 0n or 1n for a single source contribution. */
+  errorCount: bigint;
+  firstTokenLatency: number | null;
+  responseTime: number | null;
+  outputTokensPerSec: number | null;
+  malformedOther: boolean;
+}
+
+export interface HashedDashboardDimensionKey extends DashboardDimensionKey {
+  hash: Buffer;
+}
+
+export interface DashboardRollupFormula {
+  version: number;
+  normalize(row: DashboardSourceLogRow): NormalizedDashboardLog;
 }
 
 export type DashboardRollupReadiness =
