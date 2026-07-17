@@ -286,21 +286,26 @@ async function countUnprobedGaps(client: DbClient, version: number): Promise<num
   return asNumber((result.rows[0] as { c: string } | undefined)?.c, 0);
 }
 
+export type DashboardRollupWorkPreference = "live" | "backfill";
+
 /**
  * Work priority (healthy versions only):
  * 1 active due gap
- * 2 active lagging live (latest source id > live_cursor)
+ * 2 active lagging live (latest source id > live_cursor) — skipped when preference=backfill
  * 3 building due gap
- * 4 building lagging live
+ * 4 building lagging live — skipped when preference=backfill
  * 5 building history / finalization when incomplete
  *
+ * `preference: "backfill"` still honors due gaps first, but skips live opportunities
+ * so a worker can force history/finalization under continuous live lag.
  * Live is returned only when the version is lagging. Caught-up active does not
  * shadow building work forever. Identical active/building is one candidate.
- * Never returns recent.
+ * Never returns recent. Never schedules inactive/unhealthy versions.
  */
 export async function selectDashboardRollupWorkItem(
   client: DbClient,
   nowSeconds: number,
+  preference: DashboardRollupWorkPreference = "live",
 ): Promise<DashboardRollupWorkItem | null> {
   const reg = await client.query(
     `SELECT active_version, building_version
@@ -330,7 +335,7 @@ export async function selectDashboardRollupWorkItem(
     ordered.push({ version: buildingVersion, role: "building" });
   }
 
-  // Cache one latest lookup for the whole select pass.
+  // Cache one latest lookup for the whole select pass (only needed for live lag checks).
   let latestId: bigint | null | undefined;
 
   async function latest(): Promise<bigint | null> {
@@ -356,24 +361,28 @@ export async function selectDashboardRollupWorkItem(
     return id !== null && id > liveCursorId;
   }
 
-  // 1-2: active gap then lagging live
+  function isSchedulable(status: string): boolean {
+    return status !== "unhealthy" && status !== "inactive";
+  }
+
+  // 1-2: active gap then (optional) lagging live
   for (const c of ordered.filter((x) => x.role === "active")) {
     const state = await loadVersionStateLite(client, c.version);
-    if (!state || state.status === "unhealthy" || state.status === "inactive") continue;
+    if (!state || !isSchedulable(state.status)) continue;
     const gapItem = await tryDueGap(c.version);
     if (gapItem) return gapItem;
-    if (await isLagging(asBigInt(state.live_cursor_id))) {
+    if (preference === "live" && (await isLagging(asBigInt(state.live_cursor_id)))) {
       return { lane: "live", version: c.version };
     }
   }
 
-  // 3-5: building gap, lagging live, then history/finalization
+  // 3-5: building gap, (optional) lagging live, then history/finalization
   for (const c of ordered.filter((x) => x.role === "building")) {
     const state = await loadVersionStateLite(client, c.version);
-    if (!state || state.status === "unhealthy" || state.status === "inactive") continue;
+    if (!state || !isSchedulable(state.status)) continue;
     const gapItem = await tryDueGap(c.version);
     if (gapItem) return gapItem;
-    if (await isLagging(asBigInt(state.live_cursor_id))) {
+    if (preference === "live" && (await isLagging(asBigInt(state.live_cursor_id)))) {
       return { lane: "live", version: c.version };
     }
     if (!asBoolean(state.history_complete)) {
@@ -382,15 +391,12 @@ export async function selectDashboardRollupWorkItem(
     }
   }
 
-  // First-build: active null, only building — already handled above.
-  // Active-only caught up with no gap: null.
   // When active==building and was listed as active only, still need history if incomplete.
+  // This is building history (same version), not "active-only history".
   if (activeVersion !== null && buildingVersion === activeVersion) {
     const state = await loadVersionStateLite(client, activeVersion);
-    if (state && state.status !== "unhealthy" && state.status !== "inactive") {
-      if (!asBoolean(state.history_complete)) {
-        return { lane: "history", version: activeVersion };
-      }
+    if (state && isSchedulable(state.status) && !asBoolean(state.history_complete)) {
+      return { lane: "history", version: activeVersion };
     }
   }
 
@@ -774,6 +780,13 @@ export async function processDashboardRollupWorkItem(
   const state = mapState(stateRow);
   if (state.version !== workItem.version) {
     throw new Error("dashboard rollup version mismatch");
+  }
+
+  if (state.status === "inactive") {
+    return emptyResult(workItem, state, {
+      durationMs: Math.max(0, performance.now() - started),
+      skippedReason: "version_inactive",
+    });
   }
 
   async function markUnhealthyAndSkip(message: string): Promise<DashboardRollupBatchResult> {

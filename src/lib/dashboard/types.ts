@@ -156,5 +156,5 @@ export interface DashboardRollupBatchResult {
   lagIdSpan: string | null;
   malformedOtherRows: number;
   /** Present when the batch exited early without source work. */
-  skippedReason?: "lock_unavailable" | "source_unhealthy";
+  skippedReason?: "lock_unavailable" | "source_unhealthy" | "version_inactive";
 }

@@ -611,6 +611,205 @@ describe("selectDashboardRollupWorkItem priority", () => {
       gapEndId: BigInt(2),
     });
   });
+
+  it("default preference under continuous lag chooses live, not history", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }),
+      () => ({ rows: [{ id: "999" }] }), // continuous lag
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000, "live");
+    assert.deepEqual(item, { lane: "live", version: 1 });
+  });
+
+  it("backfill preference skips live and chooses building history under continuous lag", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+      // active: gap only (no live under backfill)
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // active no due gap
+      // building
+      () => ({
+        rows: [
+          {
+            version: 2,
+            status: "building",
+            live_cursor_id: "20",
+            history_cursor_id: "15",
+            history_complete: false,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // building no due gap
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000, "backfill");
+    assert.deepEqual(item, { lane: "history", version: 2 });
+  });
+
+  it("backfill preference with active==building incomplete returns history", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 1 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "building",
+            live_cursor_id: "10",
+            history_cursor_id: "8",
+            history_complete: false,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // no due gap
+      // equal-version history finalization path
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "building",
+            live_cursor_id: "10",
+            history_cursor_id: "8",
+            history_complete: false,
+          },
+        ],
+      }),
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000, "backfill");
+    assert.deepEqual(item, { lane: "history", version: 1 });
+  });
+
+  it("backfill preference still honors due gaps first and never schedules inactive/unhealthy", async () => {
+    // due gap on active wins even under backfill
+    {
+      const { client } = createSequencedClient([
+        () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+        () => ({
+          rows: [
+            {
+              version: 1,
+              status: "active",
+              live_cursor_id: "10",
+              history_cursor_id: null,
+              history_complete: true,
+            },
+          ],
+        }),
+        () => ({ rows: [{ gap_start_id: "3", gap_end_id: "4" }] }),
+      ]);
+      const item = await selectDashboardRollupWorkItem(client, 1000, "backfill");
+      assert.deepEqual(item, {
+        lane: "gap",
+        version: 1,
+        gapStartId: BigInt(3),
+        gapEndId: BigInt(4),
+      });
+    }
+
+    // inactive building + no healthy building history => null (no active history invention)
+    {
+      const { client } = createSequencedClient([
+        () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+        () => ({
+          rows: [
+            {
+              version: 1,
+              status: "active",
+              live_cursor_id: "10",
+              history_cursor_id: null,
+              history_complete: true,
+            },
+          ],
+        }),
+        () => ({ rows: [] }),
+        () => ({
+          rows: [
+            {
+              version: 2,
+              status: "inactive",
+              live_cursor_id: "20",
+              history_cursor_id: "15",
+              history_complete: false,
+            },
+          ],
+        }),
+      ]);
+      const item = await selectDashboardRollupWorkItem(client, 1000, "backfill");
+      assert.equal(item, null);
+    }
+
+    // unhealthy building skipped
+    {
+      const { client } = createSequencedClient([
+        () => ({ rows: [{ active_version: null, building_version: 2 }] }),
+        () => ({
+          rows: [
+            {
+              version: 2,
+              status: "unhealthy",
+              live_cursor_id: "20",
+              history_cursor_id: "15",
+              history_complete: false,
+            },
+          ],
+        }),
+      ]);
+      const item = await selectDashboardRollupWorkItem(client, 1000, "backfill");
+      assert.equal(item, null);
+    }
+  });
+
+  it("backfill preference returns null when building history already complete", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }),
+      () => ({
+        rows: [
+          {
+            version: 2,
+            status: "building",
+            live_cursor_id: "20",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }),
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000, "backfill");
+    assert.equal(item, null);
+  });
 });
 
 describe("processDashboardRollupWorkItem", () => {
@@ -635,6 +834,41 @@ describe("processDashboardRollupWorkItem", () => {
       DASHBOARD_ROLLUP_ADVISORY_LOCK_CLASS,
       DASHBOARD_ROLLUP_ADVISORY_LOCK_OBJECT,
     ]);
+  });
+
+  it("inactive locked state returns version_inactive with no catalog/source query", async () => {
+    const { client, statements } = createSequencedClient([
+      () => ({ rows: [{ pg_try_advisory_xact_lock: true }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            source_table_oid: 4242,
+            source_boundary_id: "100",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+            status: "inactive",
+            processed_rows: "0",
+            malformed_other_rows: "0",
+            processed_min_created_at: null,
+            processed_max_created_at: null,
+          },
+        ],
+      }),
+    ]);
+    const result = await processDashboardRollupWorkItem(
+      client,
+      { lane: "live", version: 1 },
+      config,
+      1000,
+    );
+    assert.equal(result.skippedReason, "version_inactive");
+    assert.equal(result.fetchedRows, 0);
+    assert.equal(result.claimedRows, 0);
+    assert.equal(statements.length, 2);
+    assert.ok(statements.every((s) => !/pg_class|pg_attribute/i.test(s)));
+    assert.ok(statements.every((s) => !/\bFROM\s+logs\b/i.test(s)));
   });
 
   it("source OID mismatch marks unhealthy, returns skippedReason, no source batch", async () => {
