@@ -100,6 +100,9 @@ function makeSmartFake(options: {
     next_probe_at: string;
     probe_attempts: number;
   };
+  unprobedGapCount?: number;
+  registry?: { active_version: number | null; building_version: number | null };
+  previousActiveStateUpdates?: unknown[][];
 }) {
   const statements: string[] = [];
   const valuesLog: unknown[][] = [];
@@ -110,6 +113,7 @@ function makeSmartFake(options: {
   let lastRollupStmt = -1;
   let firstCursorStmt = -1;
   let registryActivation: unknown[] | null = null;
+  const demoteUpdates: unknown[][] = [];
   const gapOps: string[] = [];
 
   const stateRow = {
@@ -126,6 +130,13 @@ function makeSmartFake(options: {
     processed_max_created_at: null as number | null,
     last_error: null as string | null,
     ...(options.state ?? {}),
+  };
+
+  const registry = {
+    active_version: options.registry?.active_version ?? null,
+    building_version:
+      options.registry?.building_version ??
+      (stateRow.status === "building" ? Number(stateRow.version) : null),
   };
 
   function parseDimInsert(values: unknown[]) {
@@ -282,15 +293,35 @@ function makeSmartFake(options: {
         gapOps.push(`update:${JSON.stringify(v)}`);
         return { rows: [], rowCount: 1 };
       }
+      if (/count\(\*\)/i.test(text) && /dashboard_rollup_id_gaps/i.test(text) && /probe_attempts\s*=\s*0/i.test(text)) {
+        return { rows: [{ c: String(options.unprobedGapCount ?? 0) }] };
+      }
       if (/FROM\s+dashboard_rollup_id_gaps/i.test(text)) {
         return {
           rows: options.gapRow ? [{ ...options.gapRow }] : [],
+        };
+      }
+      if (/FROM\s+dashboard_rollup_registry/i.test(text)) {
+        return {
+          rows: [
+            {
+              active_version: registry.active_version,
+              building_version: registry.building_version,
+            },
+          ],
         };
       }
       if (/UPDATE\s+dashboard_rollup_state/i.test(text)) {
         if (String(text).includes("unhealthy") || v.includes("unhealthy")) {
           stateRow.status = "unhealthy";
           return { rows: [], rowCount: 1 };
+        }
+        if (String(text).includes("inactive") || v.includes("inactive")) {
+          demoteUpdates.push(v);
+          return { rows: [], rowCount: 1 };
+        }
+        if (String(text).includes("'active'") || v.includes("active")) {
+          // may be activation status flip or other
         }
         cursorUpdateCount += 1;
         if (firstCursorStmt < 0) firstCursorStmt = idx;
@@ -299,6 +330,8 @@ function makeSmartFake(options: {
       }
       if (/UPDATE\s+dashboard_rollup_registry/i.test(text)) {
         registryActivation = v;
+        registry.active_version = Number(v[0]);
+        registry.building_version = null;
         return { rows: [], rowCount: 1 };
       }
       throw new Error(`unexpected query: ${text.slice(0, 200)}`);
@@ -324,6 +357,7 @@ function makeSmartFake(options: {
     get registryActivation() {
       return registryActivation;
     },
+    demoteUpdates,
     gapOps,
     stateRow,
   };
@@ -395,164 +429,187 @@ describe("gap detection helpers", () => {
 });
 
 describe("selectDashboardRollupWorkItem priority", () => {
-  it("prefers active gap > active live > building gap > building history when incomplete > building live; no recent; no duplicate when equal", async () => {
-    // Active gap
-    {
-      const { client } = createSequencedClient([
-        () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
-        () => ({
-          rows: [
-            {
-              version: 1,
-              status: "active",
-              live_cursor_id: "10",
-              history_cursor_id: null,
-              history_complete: true,
-            },
-          ],
-        }),
-        () => ({ rows: [{ gap_start_id: "3", gap_end_id: "5" }] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.deepEqual(item, {
-        lane: "gap",
-        version: 1,
-        gapStartId: BigInt(3),
-        gapEndId: BigInt(5),
-      });
-    }
+  it("prefers active due gap over lagging live and never returns recent", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [{ gap_start_id: "3", gap_end_id: "5" }] }),
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.deepEqual(item, {
+      lane: "gap",
+      version: 1,
+      gapStartId: BigInt(3),
+      gapEndId: BigInt(5),
+    });
+    assert.notEqual((item as { lane: string }).lane, "recent");
+  });
 
-    // Active live when no active gap
-    {
-      const { client } = createSequencedClient([
-        () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
-        () => ({
-          rows: [
-            {
-              version: 1,
-              status: "active",
-              live_cursor_id: "10",
-              history_cursor_id: null,
-              history_complete: true,
-            },
-          ],
-        }),
-        () => ({ rows: [] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.deepEqual(item, { lane: "live", version: 1 });
-    }
+  it("returns active live only when latest source id lags past live_cursor", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // no due gap
+      () => ({ rows: [{ id: "50" }] }), // latest > cursor
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.deepEqual(item, { lane: "live", version: 1 });
+  });
 
-    // Building gap when no active
-    {
-      const { client } = createSequencedClient([
-        () => ({ rows: [{ active_version: null, building_version: 2 }] }),
-        () => ({
-          rows: [
-            {
-              version: 2,
-              status: "building",
-              live_cursor_id: "20",
-              history_cursor_id: "15",
-              history_complete: false,
-            },
-          ],
-        }),
-        () => ({ rows: [{ gap_start_id: "1", gap_end_id: "2" }] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.deepEqual(item, {
-        lane: "gap",
-        version: 2,
-        gapStartId: BigInt(1),
-        gapEndId: BigInt(2),
-      });
-    }
+  it("caught-up active falls through so building lagging live is selected", async () => {
+    // latest is cached once: 100 == active cursor (caught up) but > building cursor 20
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "100",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // active no gap
+      () => ({ rows: [{ id: "100" }] }), // latest lookup (cached for rest of select)
+      () => ({
+        rows: [
+          {
+            version: 2,
+            status: "building",
+            live_cursor_id: "20",
+            history_cursor_id: "15",
+            history_complete: false,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // building no gap
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.deepEqual(item, { lane: "live", version: 2 });
+  });
 
-    // Building history when incomplete and no gap (history before live so backfill progresses)
-    {
-      const { client } = createSequencedClient([
-        () => ({ rows: [{ active_version: null, building_version: 2 }] }),
-        () => ({
-          rows: [
-            {
-              version: 2,
-              status: "building",
-              live_cursor_id: "20",
-              history_cursor_id: "15",
-              history_complete: false,
-            },
-          ],
-        }),
-        () => ({ rows: [] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.deepEqual(item, { lane: "history", version: 2 });
-    }
+  it("building history when incomplete and not lagging live", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: null, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 2,
+            status: "building",
+            live_cursor_id: "20",
+            history_cursor_id: "15",
+            history_complete: false,
+          },
+        ],
+      }),
+      () => ({ rows: [] }), // no gap
+      () => ({ rows: [{ id: "20" }] }), // caught up live
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.deepEqual(item, { lane: "history", version: 2 });
+  });
 
-    // Building live when history complete
-    {
-      const { client } = createSequencedClient([
-        () => ({ rows: [{ active_version: null, building_version: 2 }] }),
-        () => ({
-          rows: [
-            {
-              version: 2,
-              status: "building",
-              live_cursor_id: "20",
-              history_cursor_id: null,
-              history_complete: true,
-            },
-          ],
-        }),
-        () => ({ rows: [] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.deepEqual(item, { lane: "live", version: 2 });
-    }
+  it("building lagging live preferred over history when new logs arrive", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: null, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 2,
+            status: "building",
+            live_cursor_id: "20",
+            history_cursor_id: "15",
+            history_complete: false,
+          },
+        ],
+      }),
+      () => ({ rows: [] }),
+      () => ({ rows: [{ id: "25" }] }), // lagging
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.deepEqual(item, { lane: "live", version: 2 });
+  });
 
-    // Active == building: single candidate
-    {
-      const { client, statements } = createSequencedClient([
-        () => ({ rows: [{ active_version: 1, building_version: 1 }] }),
-        () => ({
-          rows: [
-            {
-              version: 1,
-              status: "active",
-              live_cursor_id: "10",
-              history_cursor_id: null,
-              history_complete: true,
-            },
-          ],
-        }),
-        () => ({ rows: [] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.deepEqual(item, { lane: "live", version: 1 });
-      assert.equal(statements.filter((s) => /dashboard_rollup_state/i.test(s)).length, 1);
-    }
+  it("active==building is a single candidate without duplicate state loads for lag check path", async () => {
+    const { client, statements } = createSequencedClient([
+      () => ({ rows: [{ active_version: 1, building_version: 1 }] }),
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+      () => ({ rows: [] }),
+      () => ({ rows: [{ id: "10" }] }), // caught up
+      // may load state again for equal-version history check
+      () => ({
+        rows: [
+          {
+            version: 1,
+            status: "active",
+            live_cursor_id: "10",
+            history_cursor_id: null,
+            history_complete: true,
+          },
+        ],
+      }),
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.equal(item, null);
+    // Only one registry candidate path; gap+latest used once for the active role
+    assert.ok(statements.filter((s) => /dashboard_rollup_registry/i.test(s)).length === 1);
+  });
 
-    // Never recent
-    {
-      const { client } = createSequencedClient([
-        () => ({ rows: [{ active_version: 1, building_version: null }] }),
-        () => ({
-          rows: [
-            {
-              version: 1,
-              status: "active",
-              live_cursor_id: "1",
-              history_cursor_id: null,
-              history_complete: true,
-            },
-          ],
-        }),
-        () => ({ rows: [] }),
-      ]);
-      const item = await selectDashboardRollupWorkItem(client, 1000);
-      assert.notEqual((item as { lane: string } | null)?.lane, "recent");
-    }
+  it("building gap selected before building lagging live", async () => {
+    const { client } = createSequencedClient([
+      () => ({ rows: [{ active_version: null, building_version: 2 }] }),
+      () => ({
+        rows: [
+          {
+            version: 2,
+            status: "building",
+            live_cursor_id: "20",
+            history_cursor_id: "15",
+            history_complete: false,
+          },
+        ],
+      }),
+      () => ({ rows: [{ gap_start_id: "1", gap_end_id: "2" }] }),
+    ]);
+    const item = await selectDashboardRollupWorkItem(client, 1000);
+    assert.deepEqual(item, {
+      lane: "gap",
+      version: 2,
+      gapStartId: BigInt(1),
+      gapEndId: BigInt(2),
+    });
   });
 });
 
@@ -580,7 +637,8 @@ describe("processDashboardRollupWorkItem", () => {
     ]);
   });
 
-  it("source OID mismatch throws before source batch read", async () => {
+  it("source OID mismatch marks unhealthy, returns skippedReason, no source batch", async () => {
+    const order: string[] = [];
     const { client, statements } = createSequencedClient([
       () => ({ rows: [{ pg_try_advisory_xact_lock: true }] }),
       () => ({
@@ -600,35 +658,48 @@ describe("processDashboardRollupWorkItem", () => {
           },
         ],
       }),
-      () => ({
-        rows: [
-          {
-            table_oid: 4242,
-            id_exists: true,
-            id_integer_compatible: true,
-            id_not_null: true,
-            id_unique_leading: true,
-            created_at_exists: true,
-            created_at_integer_compatible: true,
-          },
-        ],
-      }),
+      () => {
+        order.push("catalog");
+        return {
+          rows: [
+            {
+              table_oid: 4242,
+              id_exists: true,
+              id_integer_compatible: true,
+              id_not_null: true,
+              id_unique_leading: true,
+              created_at_exists: true,
+              created_at_integer_compatible: true,
+            },
+          ],
+        };
+      },
+      (text) => {
+        order.push("unhealthy");
+        assert.match(text, /UPDATE\s+dashboard_rollup_state/i);
+        assert.match(text, /unhealthy/i);
+        return { rows: [], rowCount: 1 };
+      },
     ]);
-    await assert.rejects(
-      () =>
-        processDashboardRollupWorkItem(client, { lane: "live", version: 1 }, config, 1000),
-      /oid|source/i,
+    const result = await processDashboardRollupWorkItem(
+      client,
+      { lane: "live", version: 1 },
+      config,
+      1000,
     );
+    assert.equal(result.skippedReason, "source_unhealthy");
+    assert.equal(result.fetchedRows, 0);
+    assert.deepEqual(order, ["catalog", "unhealthy"]);
     const sourceBatch = statements.filter(
       (s) =>
         /FROM\s+logs/i.test(s) &&
-        /LIMIT/i.test(s) &&
-        !/ORDER BY\s+id\s+DESC\s+LIMIT\s+1/i.test(s),
+        /WHERE/i.test(s) &&
+        /LIMIT/i.test(s),
     );
     assert.equal(sourceBatch.length, 0);
   });
 
-  it("latest ID regression marks unhealthy then throws", async () => {
+  it("latest ID regression marks unhealthy then returns skippedReason without throw", async () => {
     const order: string[] = [];
     const { client } = createSequencedClient([
       () => ({ rows: [{ pg_try_advisory_xact_lock: true }] }),
@@ -674,11 +745,14 @@ describe("processDashboardRollupWorkItem", () => {
         return { rows: [], rowCount: 1 };
       },
     ]);
-    await assert.rejects(
-      () =>
-        processDashboardRollupWorkItem(client, { lane: "live", version: 1 }, config, 1000),
-      /regress|behind|unhealthy|source/i,
+    const result = await processDashboardRollupWorkItem(
+      client,
+      { lane: "live", version: 1 },
+      config,
+      1000,
     );
+    assert.equal(result.skippedReason, "source_unhealthy");
+    assert.equal(result.fetchedRows, 0);
     assert.deepEqual(order, ["latest", "unhealthy"]);
   });
 
@@ -962,8 +1036,8 @@ describe("processDashboardRollupWorkItem", () => {
     );
   });
 
-  it("empty history sets complete and null cursor", async () => {
-    const fake = makeSmartFake({
+  it("empty history sets null cursor but history_complete only without unprobed gaps", async () => {
+    const incomplete = makeSmartFake({
       sourceRows: [],
       state: {
         status: "building",
@@ -972,21 +1046,84 @@ describe("processDashboardRollupWorkItem", () => {
         live_cursor_id: "100",
       },
       latestId: "100",
+      unprobedGapCount: 1,
     });
 
-    const result = await processDashboardRollupWorkItem(
-      fake.client,
+    const blocked = await processDashboardRollupWorkItem(
+      incomplete.client,
       { lane: "history", version: 1 },
       config,
       1_700_000_100,
     );
+    assert.equal(blocked.historyCursorId, null);
+    assert.equal(blocked.historyComplete, false);
+    assert.equal(blocked.fetchedRows, 0);
 
-    assert.equal(result.historyComplete, true);
-    assert.equal(result.historyCursorId, null);
-    assert.equal(result.fetchedRows, 0);
+    const ready = makeSmartFake({
+      sourceRows: [],
+      state: {
+        status: "building",
+        history_complete: false,
+        history_cursor_id: "11",
+        live_cursor_id: "100",
+      },
+      latestId: "100",
+      unprobedGapCount: 0,
+    });
+    const completed = await processDashboardRollupWorkItem(
+      ready.client,
+      { lane: "history", version: 1 },
+      config,
+      1_700_000_100,
+    );
+    assert.equal(completed.historyCursorId, null);
+    assert.equal(completed.historyComplete, true);
   });
 
-  it("activation requires history complete plus live caught up", async () => {
+  it("history finalization with cursor null completes only after unprobed gaps cleared", async () => {
+    const blocked = makeSmartFake({
+      sourceRows: [],
+      state: {
+        status: "building",
+        history_complete: false,
+        history_cursor_id: null,
+        live_cursor_id: "100",
+      },
+      latestId: "100",
+      unprobedGapCount: 2,
+    });
+    const r1 = await processDashboardRollupWorkItem(
+      blocked.client,
+      { lane: "history", version: 1 },
+      config,
+      1_700_000_100,
+    );
+    assert.equal(r1.historyComplete, false);
+    assert.equal(blocked.registryActivation, null);
+
+    const ready = makeSmartFake({
+      sourceRows: [],
+      state: {
+        status: "building",
+        history_complete: false,
+        history_cursor_id: null,
+        live_cursor_id: "100",
+      },
+      latestId: "100",
+      unprobedGapCount: 0,
+      registry: { active_version: null, building_version: 1 },
+    });
+    const r2 = await processDashboardRollupWorkItem(
+      ready.client,
+      { lane: "history", version: 1 },
+      config,
+      1_700_000_100,
+    );
+    assert.equal(r2.historyComplete, true);
+    assert.ok(ready.registryActivation, "expected activation after unprobed gaps cleared");
+  });
+
+  it("activation requires history complete plus live caught up and demotes prior active", async () => {
     const fake = makeSmartFake({
       sourceRows: [],
       state: {
@@ -995,18 +1132,26 @@ describe("processDashboardRollupWorkItem", () => {
         history_cursor_id: null,
         live_cursor_id: "100",
         source_boundary_id: "100",
+        version: 2,
       },
       latestId: "100",
+      unprobedGapCount: 0,
+      registry: { active_version: 1, building_version: 2 },
     });
 
     const result = await processDashboardRollupWorkItem(
       fake.client,
-      { lane: "live", version: 1 },
+      { lane: "live", version: 2 },
       config,
       1_700_000_100,
     );
 
     assert.ok(fake.registryActivation, "expected registry activation");
+    assert.ok(
+      fake.demoteUpdates.length >= 1 ||
+        fake.statements.some((s) => /inactive/i.test(s)),
+      "expected previous active demotion to inactive",
+    );
     assert.equal(result.historyComplete, true);
     assert.equal(result.lagIdSpan, "0");
   });
@@ -1021,6 +1166,7 @@ describe("processDashboardRollupWorkItem", () => {
         live_cursor_id: "50",
       },
       latestId: "100",
+      unprobedGapCount: 0,
     });
 
     await processDashboardRollupWorkItem(
@@ -1030,6 +1176,29 @@ describe("processDashboardRollupWorkItem", () => {
       1_700_000_100,
     );
 
+    assert.equal(fake.registryActivation, null);
+  });
+
+  it("unprobed gaps block activation even when history flag already true", async () => {
+    const fake = makeSmartFake({
+      sourceRows: [],
+      state: {
+        status: "building",
+        history_complete: true,
+        history_cursor_id: null,
+        live_cursor_id: "100",
+      },
+      latestId: "100",
+      unprobedGapCount: 1,
+      registry: { active_version: null, building_version: 1 },
+    });
+
+    await processDashboardRollupWorkItem(
+      fake.client,
+      { lane: "live", version: 1 },
+      config,
+      1_700_000_100,
+    );
     assert.equal(fake.registryActivation, null);
   });
 

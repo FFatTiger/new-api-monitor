@@ -6,6 +6,12 @@ export interface DashboardSourceSchema {
   createdAtColumnUsable: boolean;
 }
 
+export type DashboardRollupVersionStatus =
+  | "building"
+  | "active"
+  | "inactive"
+  | "unhealthy";
+
 export interface DashboardRollupVersionState {
   version: number;
   sourceTableOid: number;
@@ -13,7 +19,7 @@ export interface DashboardRollupVersionState {
   liveCursorId: bigint;
   historyCursorId: bigint | null;
   historyComplete: boolean;
-  status: "building" | "active" | "unhealthy";
+  status: DashboardRollupVersionStatus;
 }
 
 /**
@@ -292,7 +298,12 @@ interface StateRow {
 
 function mapStateRow(row: StateRow): DashboardRollupVersionState {
   const status = row.status;
-  if (status !== "building" && status !== "active" && status !== "unhealthy") {
+  if (
+    status !== "building" &&
+    status !== "active" &&
+    status !== "inactive" &&
+    status !== "unhealthy"
+  ) {
     throw new Error(`Unexpected dashboard rollup status: ${status}`);
   }
   return {

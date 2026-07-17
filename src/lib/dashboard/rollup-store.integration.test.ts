@@ -110,22 +110,34 @@ describe("dashboard rollup store integration", { skip: !url }, () => {
         "claims must roll back with the failed transaction",
       );
 
-      // Retry successfully
+      // Retry successfully — live from cursor 0 should claim all three fixture rows once.
       const result = await runInTransaction(db, async (tx) => {
         const work = await selectDashboardRollupWorkItem(tx, now);
         assert.ok(work);
         return processDashboardRollupWorkItem(tx, work!, config, now);
       });
 
-      assert.ok(result.claimedRows >= 1);
+      assert.equal(result.claimedRows, 3);
+      assert.equal(result.fetchedRows, 3);
+      assert.equal(result.liveCursorId, "3");
 
       const claims = await client.query(
         `SELECT count(*)::text AS c FROM dashboard_rollup_processed_sources WHERE version = 1`,
       );
-      const claimCount = Number((claims.rows[0] as { c: string }).c);
-      assert.ok(claimCount >= 1);
+      assert.equal(Number((claims.rows[0] as { c: string }).c), 3);
 
-      // Exactly-once: re-process same live range should claim 0 new if cursor advanced
+      const requestTotal = await client.query(
+        `SELECT coalesce(sum(request_count), 0)::text AS s
+         FROM dashboard_rollups
+         WHERE version = 1 AND grain = 4 AND dimension_id IN (
+           SELECT id FROM dashboard_rollup_dimensions
+           WHERE version = 1 AND dimension_mask = 0
+         )`,
+      );
+      // 3 sources × 1 request each on global mask all-time grain
+      assert.equal(Number((requestTotal.rows[0] as { s: string }).s), 3);
+
+      // Exactly-once: second live process claims zero and metrics stay unchanged.
       const second = await runInTransaction(db, async (tx) => {
         return processDashboardRollupWorkItem(
           tx,
@@ -134,16 +146,26 @@ describe("dashboard rollup store integration", { skip: !url }, () => {
           now + 1,
         );
       });
-      // May fetch 0 if cursor advanced past all
-      assert.ok(second.claimedRows === 0 || second.fetchedRows === 0 || second.claimedRows >= 0);
+      assert.equal(second.claimedRows, 0);
+      assert.equal(second.fetchedRows, 0);
 
       const claims2 = await client.query(
         `SELECT count(*)::text AS c FROM dashboard_rollup_processed_sources WHERE version = 1`,
       );
+      assert.equal(Number((claims2.rows[0] as { c: string }).c), 3, "retry must not double-claim");
+
+      const requestTotal2 = await client.query(
+        `SELECT coalesce(sum(request_count), 0)::text AS s
+         FROM dashboard_rollups
+         WHERE version = 1 AND grain = 4 AND dimension_id IN (
+           SELECT id FROM dashboard_rollup_dimensions
+           WHERE version = 1 AND dimension_mask = 0
+         )`,
+      );
       assert.equal(
-        Number((claims2.rows[0] as { c: string }).c),
-        claimCount,
-        "retry must not double-claim",
+        Number((requestTotal2.rows[0] as { s: string }).s),
+        3,
+        "metrics must not double-count on retry",
       );
 
       // Four grains present for claimed sources

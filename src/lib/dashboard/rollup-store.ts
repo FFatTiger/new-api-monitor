@@ -173,6 +173,8 @@ interface VersionStateRow {
   processed_max_created_at: string | number | bigint | null;
 }
 
+type VersionStatus = "building" | "active" | "inactive" | "unhealthy";
+
 interface LoadedState {
   version: number;
   sourceTableOid: number;
@@ -180,7 +182,7 @@ interface LoadedState {
   liveCursorId: bigint;
   historyCursorId: bigint | null;
   historyComplete: boolean;
-  status: "building" | "active" | "unhealthy";
+  status: VersionStatus;
   processedRows: bigint;
   malformedOtherRows: bigint;
   processedMinCreatedAt: number | null;
@@ -189,7 +191,12 @@ interface LoadedState {
 
 function mapState(row: VersionStateRow): LoadedState {
   const status = row.status;
-  if (status !== "building" && status !== "active" && status !== "unhealthy") {
+  if (
+    status !== "building" &&
+    status !== "active" &&
+    status !== "inactive" &&
+    status !== "unhealthy"
+  ) {
     throw new Error(`Unexpected dashboard rollup status: ${status}`);
   }
   return {
@@ -263,15 +270,33 @@ async function loadVersionStateLite(
   );
 }
 
+async function loadLatestSourceId(client: DbClient): Promise<bigint | null> {
+  const result = await client.query(`SELECT id FROM logs ORDER BY id DESC LIMIT 1`);
+  const row = result.rows[0] as { id: string | number | bigint } | undefined;
+  return row ? asBigInt(row.id) : null;
+}
+
+async function countUnprobedGaps(client: DbClient, version: number): Promise<number> {
+  const result = await client.query(
+    `SELECT count(*)::text AS c
+     FROM dashboard_rollup_id_gaps
+     WHERE version = $1 AND probe_attempts = 0`,
+    [version],
+  );
+  return asNumber((result.rows[0] as { c: string } | undefined)?.c, 0);
+}
+
 /**
- * Work priority:
+ * Work priority (healthy versions only):
  * 1 active due gap
- * 2 active live
+ * 2 active lagging live (latest source id > live_cursor)
  * 3 building due gap
- * 4 building history if incomplete (so first-build backfill progresses; empty live would otherwise starve it)
- * 5 building live
+ * 4 building lagging live
+ * 5 building history / finalization when incomplete
  *
- * Never returns recent. Identical active/building versions are one candidate.
+ * Live is returned only when the version is lagging. Caught-up active does not
+ * shadow building work forever. Identical active/building is one candidate.
+ * Never returns recent.
  */
 export async function selectDashboardRollupWorkItem(
   client: DbClient,
@@ -296,62 +321,77 @@ export async function selectDashboardRollupWorkItem(
       ? null
       : asNumber(row.building_version);
 
-  const candidates: Array<{ version: number; role: "active" | "building" }> = [];
+  // Deduplicate when active == building.
+  const ordered: Array<{ version: number; role: "active" | "building" }> = [];
   if (activeVersion !== null) {
-    candidates.push({ version: activeVersion, role: "active" });
+    ordered.push({ version: activeVersion, role: "active" });
   }
   if (buildingVersion !== null && buildingVersion !== activeVersion) {
-    candidates.push({ version: buildingVersion, role: "building" });
-  } else if (buildingVersion !== null && activeVersion === buildingVersion) {
-    // already added as active; treat as one candidate
-  } else if (buildingVersion !== null) {
-    candidates.push({ version: buildingVersion, role: "building" });
+    ordered.push({ version: buildingVersion, role: "building" });
   }
 
-  // Phase 1: active gap / active live
-  for (const c of candidates.filter((x) => x.role === "active")) {
-    const state = await loadVersionStateLite(client, c.version);
-    if (!state || state.status === "unhealthy") continue;
-    const gap = await loadDueGap(client, c.version, nowSeconds);
-    if (gap) {
-      return {
-        lane: "gap",
-        version: c.version,
-        gapStartId: gap.gapStartId,
-        gapEndId: gap.gapEndId,
-      };
+  // Cache one latest lookup for the whole select pass.
+  let latestId: bigint | null | undefined;
+
+  async function latest(): Promise<bigint | null> {
+    if (latestId === undefined) {
+      latestId = await loadLatestSourceId(client);
     }
-    return { lane: "live", version: c.version };
+    return latestId;
   }
 
-  // When active == building, the single candidate was handled above with role active.
-  // Building-only candidate:
-  for (const c of candidates.filter((x) => x.role === "building")) {
+  async function tryDueGap(version: number): Promise<DashboardRollupWorkItem | null> {
+    const gap = await loadDueGap(client, version, nowSeconds);
+    if (!gap) return null;
+    return {
+      lane: "gap",
+      version,
+      gapStartId: gap.gapStartId,
+      gapEndId: gap.gapEndId,
+    };
+  }
+
+  async function isLagging(liveCursorId: bigint): Promise<boolean> {
+    const id = await latest();
+    return id !== null && id > liveCursorId;
+  }
+
+  // 1-2: active gap then lagging live
+  for (const c of ordered.filter((x) => x.role === "active")) {
     const state = await loadVersionStateLite(client, c.version);
-    if (!state || state.status === "unhealthy") continue;
-    const gap = await loadDueGap(client, c.version, nowSeconds);
-    if (gap) {
-      return {
-        lane: "gap",
-        version: c.version,
-        gapStartId: gap.gapStartId,
-        gapEndId: gap.gapEndId,
-      };
+    if (!state || state.status === "unhealthy" || state.status === "inactive") continue;
+    const gapItem = await tryDueGap(c.version);
+    if (gapItem) return gapItem;
+    if (await isLagging(asBigInt(state.live_cursor_id))) {
+      return { lane: "live", version: c.version };
     }
-    if (!asBoolean(state.history_complete) && state.history_cursor_id !== null) {
-      return { lane: "history", version: c.version };
+  }
+
+  // 3-5: building gap, lagging live, then history/finalization
+  for (const c of ordered.filter((x) => x.role === "building")) {
+    const state = await loadVersionStateLite(client, c.version);
+    if (!state || state.status === "unhealthy" || state.status === "inactive") continue;
+    const gapItem = await tryDueGap(c.version);
+    if (gapItem) return gapItem;
+    if (await isLagging(asBigInt(state.live_cursor_id))) {
+      return { lane: "live", version: c.version };
     }
     if (!asBoolean(state.history_complete)) {
+      // History walk or finalization (cursor null with unprobed gaps / incomplete flag)
       return { lane: "history", version: c.version };
     }
-    return { lane: "live", version: c.version };
   }
 
-  // If only active==building already returned live above, done.
-  // If active was unhealthy and building is same version, nothing left.
+  // First-build: active null, only building — already handled above.
+  // Active-only caught up with no gap: null.
+  // When active==building and was listed as active only, still need history if incomplete.
   if (activeVersion !== null && buildingVersion === activeVersion) {
-    // already processed as active
-    return null;
+    const state = await loadVersionStateLite(client, activeVersion);
+    if (state && state.status !== "unhealthy" && state.status !== "inactive") {
+      if (!asBoolean(state.history_complete)) {
+        return { lane: "history", version: activeVersion };
+      }
+    }
   }
 
   return null;
@@ -732,60 +772,55 @@ export async function processDashboardRollupWorkItem(
     throw new Error(`dashboard rollup state missing for version ${workItem.version}`);
   }
   const state = mapState(stateRow);
-  if (state.status === "unhealthy") {
-    throw new Error(`dashboard rollup version ${workItem.version} is unhealthy`);
-  }
   if (state.version !== workItem.version) {
     throw new Error("dashboard rollup version mismatch");
   }
 
-  const sourceSchema = await inspectDashboardSourceSchema(client);
-  if (!sourceSchema.idColumnUsable || !sourceSchema.createdAtColumnUsable || sourceSchema.tableOid === 0) {
-    throw new Error("Dashboard rollup source schema is not usable");
-  }
-  if (sourceSchema.tableOid !== state.sourceTableOid) {
-    throw new Error(
-      `dashboard rollup source_table_oid mismatch: recorded ${state.sourceTableOid}, current ${sourceSchema.tableOid}`,
-    );
-  }
-
-  const latestResult = await client.query(
-    `SELECT id FROM logs ORDER BY id DESC LIMIT 1`,
-  );
-  const latestRow = latestResult.rows[0] as { id: string | number | bigint } | undefined;
-  const latestId = latestRow ? asBigInt(latestRow.id) : null;
-
-  if (latestId === null) {
-    if (state.liveCursorId > BigInt(0)) {
-      await client.query(
-        `UPDATE dashboard_rollup_state
-         SET status = 'unhealthy',
-             last_error = $2,
-             updated_at = $3
-         WHERE version = $1`,
-        [
-          workItem.version,
-          "source logs empty while live_cursor_id > 0",
-          nowSeconds,
-        ],
-      );
-      throw new Error("dashboard rollup source empty while live cursor > 0 (regression)");
-    }
-  } else if (latestId < state.liveCursorId) {
+  async function markUnhealthyAndSkip(message: string): Promise<DashboardRollupBatchResult> {
     await client.query(
       `UPDATE dashboard_rollup_state
        SET status = 'unhealthy',
            last_error = $2,
            updated_at = $3
        WHERE version = $1`,
-      [
-        workItem.version,
-        "latest source id is behind live_cursor_id",
-        nowSeconds,
-      ],
+      [workItem.version, message, nowSeconds],
     );
-    throw new Error(
-      `dashboard rollup source id regression: latest ${latestId} behind live cursor ${state.liveCursorId}`,
+    return emptyResult(workItem, state, {
+      durationMs: Math.max(0, performance.now() - started),
+      skippedReason: "source_unhealthy",
+      historyComplete: state.historyComplete,
+      liveCursorId: decimalString(state.liveCursorId),
+      historyCursorId:
+        state.historyCursorId === null ? null : decimalString(state.historyCursorId),
+    });
+  }
+
+  if (state.status === "unhealthy") {
+    return emptyResult(workItem, state, {
+      durationMs: Math.max(0, performance.now() - started),
+      skippedReason: "source_unhealthy",
+    });
+  }
+
+  const sourceSchema = await inspectDashboardSourceSchema(client);
+  if (!sourceSchema.idColumnUsable || !sourceSchema.createdAtColumnUsable || sourceSchema.tableOid === 0) {
+    return markUnhealthyAndSkip("Dashboard rollup source schema is not usable");
+  }
+  if (sourceSchema.tableOid !== state.sourceTableOid) {
+    return markUnhealthyAndSkip(
+      `dashboard rollup source_table_oid mismatch: recorded ${state.sourceTableOid}, current ${sourceSchema.tableOid}`,
+    );
+  }
+
+  const latestId = await loadLatestSourceId(client);
+
+  if (latestId === null) {
+    if (state.liveCursorId > BigInt(0)) {
+      return markUnhealthyAndSkip("source logs empty while live_cursor_id > 0");
+    }
+  } else if (latestId < state.liveCursorId) {
+    return markUnhealthyAndSkip(
+      `latest source id is behind live_cursor_id: latest ${latestId.toString()} live ${state.liveCursorId.toString()}`,
     );
   }
 
@@ -794,25 +829,52 @@ export async function processDashboardRollupWorkItem(
     throw new Error(`invalid batchSize ${batchSize}`);
   }
 
+  // History finalization: cursor already exhausted; complete only when no unprobed gaps.
+  if (workItem.lane === "history" && state.historyCursorId === null) {
+    const unprobed = await countUnprobedGaps(client, workItem.version);
+    let historyComplete = state.historyComplete;
+    if (unprobed === 0) {
+      historyComplete = true;
+      if (!state.historyComplete) {
+        await client.query(
+          `UPDATE dashboard_rollup_state
+           SET history_complete = TRUE,
+               history_cursor_id = NULL,
+               updated_at = $2
+           WHERE version = $1`,
+          [workItem.version, nowSeconds],
+        );
+      }
+      state.historyComplete = true;
+      await maybeActivateBuildingVersion(
+        client,
+        workItem.version,
+        state,
+        state.liveCursorId,
+        true,
+        nowSeconds,
+      );
+    }
+    return emptyResult(workItem, state, {
+      durationMs: Math.max(0, performance.now() - started),
+      historyComplete,
+      historyCursorId: null,
+      liveCursorId: decimalString(state.liveCursorId),
+      lagIdSpan:
+        latestId === null
+          ? "0"
+          : decimalString(
+              latestId > state.liveCursorId ? latestId - state.liveCursorId : BigInt(0),
+            ),
+    });
+  }
+
   let sourceQuery: DashboardSqlQuery;
   if (workItem.lane === "live") {
     sourceQuery = buildLiveSourceQuery(state.liveCursorId, batchSize);
   } else if (workItem.lane === "history") {
-    if (state.historyCursorId === null) {
-      // already complete
-      return emptyResult(workItem, state, {
-        durationMs: Math.max(0, performance.now() - started),
-        historyComplete: true,
-        historyCursorId: null,
-        liveCursorId: decimalString(state.liveCursorId),
-        lagIdSpan:
-          latestId === null
-            ? "0"
-            : decimalString(latestId > state.liveCursorId ? latestId - state.liveCursorId : BigInt(0)),
-      });
-    }
     sourceQuery = buildHistorySourceQuery(
-      state.historyCursorId,
+      state.historyCursorId!,
       state.sourceBoundaryId,
       batchSize,
     );
@@ -898,7 +960,9 @@ export async function processDashboardRollupWorkItem(
   } else if (workItem.lane === "history") {
     if (fetchedIds.length === 0) {
       historyCursorId = null;
-      historyComplete = true;
+      // Only complete when every recorded gap has been probed at least once.
+      const unprobed = await countUnprobedGaps(client, workItem.version);
+      historyComplete = unprobed === 0;
     } else {
       let minId = fetchedIds[0]!;
       for (const id of fetchedIds) {
@@ -912,7 +976,6 @@ export async function processDashboardRollupWorkItem(
   state.historyCursorId = historyCursorId;
   state.historyComplete = historyComplete;
 
-  // lag before possible activation re-check
   const lagIdSpan =
     latestId === null
       ? "0"
@@ -942,41 +1005,14 @@ export async function processDashboardRollupWorkItem(
     ],
   );
 
-  // Activation: building + history complete + live caught up + not unhealthy
-  if (state.status === "building" && historyComplete) {
-    const freshLatest = await client.query(`SELECT id FROM logs ORDER BY id DESC LIMIT 1`);
-    const freshRow = freshLatest.rows[0] as { id: string | number | bigint } | undefined;
-    const freshLatestId = freshRow ? asBigInt(freshRow.id) : BigInt(0);
-    if (freshLatestId <= liveCursorId) {
-      await client.query(
-        `UPDATE dashboard_rollup_registry
-         SET active_version = $1,
-             building_version = NULL,
-             updated_at = $2
-         WHERE singleton = TRUE`,
-        [workItem.version, nowSeconds],
-      );
-      await client.query(
-        `UPDATE dashboard_rollup_state
-         SET status = 'active',
-             updated_at = $2
-         WHERE version = $1`,
-        [workItem.version, nowSeconds],
-      );
-      state.status = "active";
-    }
-  }
-
-  const finalLag =
-    latestId === null
-      ? lagIdSpan
-      : decimalString(
-          (await (async () => {
-            // Prefer latest known; if we re-fetched for activation use liveCursor
-            const end = latestId > liveCursorId ? latestId - liveCursorId : BigInt(0);
-            return end;
-          })()),
-        );
+  await maybeActivateBuildingVersion(
+    client,
+    workItem.version,
+    state,
+    liveCursorId,
+    historyComplete,
+    nowSeconds,
+  );
 
   return {
     lane: workItem.lane,
@@ -988,7 +1024,71 @@ export async function processDashboardRollupWorkItem(
     liveCursorId: decimalString(liveCursorId),
     historyCursorId: historyCursorId === null ? null : decimalString(historyCursorId),
     historyComplete,
-    lagIdSpan: finalLag,
+    lagIdSpan,
     malformedOtherRows: batchMalformed,
   };
+}
+
+async function maybeActivateBuildingVersion(
+  client: DbClient,
+  version: number,
+  state: LoadedState,
+  liveCursorId: bigint,
+  historyComplete: boolean,
+  nowSeconds: number,
+): Promise<void> {
+  if (state.status !== "building" || !historyComplete) return;
+
+  // Unprobed gaps must not activate.
+  const unprobed = await countUnprobedGaps(client, version);
+  if (unprobed > 0) return;
+
+  const freshLatestId = (await loadLatestSourceId(client)) ?? BigInt(0);
+  if (freshLatestId > liveCursorId) return;
+
+  // Atomically demote previous active and switch registry under registry row lock.
+  const reg = await client.query(
+    `SELECT active_version, building_version
+     FROM dashboard_rollup_registry
+     WHERE singleton = TRUE
+     FOR UPDATE`,
+  );
+  const regRow = reg.rows[0] as
+    | { active_version: number | null; building_version: number | null }
+    | undefined;
+  if (!regRow) {
+    throw new Error("dashboard_rollup_registry singleton row is missing");
+  }
+
+  const previousActive =
+    regRow.active_version === null || regRow.active_version === undefined
+      ? null
+      : asNumber(regRow.active_version);
+
+  if (previousActive !== null && previousActive !== version) {
+    await client.query(
+      `UPDATE dashboard_rollup_state
+       SET status = 'inactive',
+           updated_at = $2
+       WHERE version = $1 AND status = 'active'`,
+      [previousActive, nowSeconds],
+    );
+  }
+
+  await client.query(
+    `UPDATE dashboard_rollup_registry
+     SET active_version = $1,
+         building_version = NULL,
+         updated_at = $2
+     WHERE singleton = TRUE`,
+    [version, nowSeconds],
+  );
+  await client.query(
+    `UPDATE dashboard_rollup_state
+     SET status = 'active',
+         updated_at = $2
+     WHERE version = $1`,
+    [version, nowSeconds],
+  );
+  state.status = "active";
 }
