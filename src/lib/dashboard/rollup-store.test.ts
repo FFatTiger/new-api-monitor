@@ -418,6 +418,34 @@ describe("gap detection helpers", () => {
     ]);
   });
 
+  it("history with prior exclusive cursor records only in-batch gaps when first id is contiguous", () => {
+    // exclusive cursor 21 => expected highest is 20; first returned is 20 => no leading gap
+    const gaps = detectHistoryGaps([BigInt(20), BigInt(18), BigInt(15)], BigInt(21));
+    assert.deepEqual(gaps, [
+      { start: BigInt(19), end: BigInt(19) },
+      { start: BigInt(16), end: BigInt(17) },
+    ]);
+  });
+
+  it("history records leading cross-batch gap against prior exclusive cursor", () => {
+    // exclusive cursor 4 => expected highest is 3; returned [2] => missing 3
+    const gaps = detectHistoryGaps([BigInt(2)], BigInt(4));
+    assert.deepEqual(gaps, [{ start: BigInt(3), end: BigInt(3) }]);
+  });
+
+  it("history empty batch at exclusive cursor >1 records terminal positive-ID interval", () => {
+    const gaps = detectHistoryGaps([], BigInt(4));
+    assert.deepEqual(gaps, [{ start: BigInt(1), end: BigInt(3) }]);
+  });
+
+  it("history null cursor or cursor <=1 produces no boundary/terminal gap", () => {
+    assert.deepEqual(detectHistoryGaps([BigInt(2)], null), []);
+    assert.deepEqual(detectHistoryGaps([], null), []);
+    assert.deepEqual(detectHistoryGaps([], BigInt(1)), []);
+    assert.deepEqual(detectHistoryGaps([], BigInt(0)), []);
+    assert.deepEqual(detectHistoryGaps([BigInt(1)], BigInt(1)), []);
+  });
+
   it("gapBackoffSeconds is exponential and capped at 3600", () => {
     assert.equal(gapBackoffSeconds(0), 1);
     assert.equal(gapBackoffSeconds(1), 2);
@@ -1267,6 +1295,47 @@ describe("processDashboardRollupWorkItem", () => {
         (g) => g.startsWith("delete:") || g.startsWith("update:") || g.startsWith("insert:"),
       ),
       `gap ops: ${JSON.stringify(fake.gapOps)}`,
+    );
+  });
+
+  it("history batch with prior exclusive cursor records leading cross-batch gap before cursor update", async () => {
+    const fake = makeSmartFake({
+      sourceRows: [sourceRow({ id: "2" })],
+      state: {
+        status: "building",
+        history_complete: false,
+        history_cursor_id: "4",
+        source_boundary_id: "5",
+        live_cursor_id: "5",
+      },
+      latestId: "5",
+      unprobedGapCount: 0,
+    });
+
+    const result = await processDashboardRollupWorkItem(
+      fake.client,
+      { lane: "history", version: 1 },
+      config,
+      1_700_000_100,
+    );
+
+    assert.equal(result.fetchedRows, 1);
+    assert.equal(result.historyCursorId, "2");
+    const leadingGapInsert = fake.gapOps.find((g) => g.startsWith("insert:"));
+    assert.ok(leadingGapInsert, `expected gap insert, got: ${JSON.stringify(fake.gapOps)}`);
+    // values: [version, start, end, next_probe_at]
+    assert.match(leadingGapInsert!, /"3".*"3"|\[1,"3","3"/);
+    const insertValues = fake.valuesLog.find(
+      (_v, i) => /INSERT\s+INTO\s+dashboard_rollup_id_gaps/i.test(fake.statements[i] ?? ""),
+    );
+    assert.ok(insertValues);
+    assert.equal(String(insertValues![1]), "3");
+    assert.equal(String(insertValues![2]), "3");
+    assert.ok(
+      fake.firstCursorStmt > fake.statements.findIndex((s) =>
+        /INSERT\s+INTO\s+dashboard_rollup_id_gaps/i.test(s),
+      ),
+      "gap insert must occur before history cursor update",
     );
   });
 

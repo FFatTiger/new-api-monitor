@@ -128,17 +128,35 @@ export function detectLiveGaps(priorCursorId: bigint, fetchedIdsAsc: bigint[]): 
 }
 
 /**
- * History descending: gaps between adjacent returned IDs.
- * nextCursorBoundary, when provided, is the exclusive lower bound after the batch
- * (minReturned); gaps between minReturned and nextCursorBoundary are not always
- * known until the following batch, so we only detect adjacent holes in the batch.
+ * History descending gap detection.
+ * `priorCursorExclusive` is the exclusive upper cursor used for the batch
+ * (history_cursor_id before the walk). Leading holes between that cursor and the
+ * first (highest) returned ID, adjacent holes inside the batch, and the terminal
+ * empty-walk interval [1, cursor-1] are all recorded so late-committing IDs can
+ * be claimed via the gap lane.
  */
 export function detectHistoryGaps(
   fetchedIdsDesc: bigint[],
-  nextCursorBoundary: bigint | null,
+  priorCursorExclusive: bigint | null,
 ): IdGapRange[] {
-  void nextCursorBoundary;
   const gaps: IdGapRange[] = [];
+
+  if (fetchedIdsDesc.length === 0) {
+    if (priorCursorExclusive !== null && priorCursorExclusive > BigInt(1)) {
+      gaps.push({ start: BigInt(1), end: priorCursorExclusive - BigInt(1) });
+    }
+    return gaps.filter((g) => g.start <= g.end);
+  }
+
+  // Leading / cross-batch gap: expected highest is priorCursorExclusive - 1.
+  if (priorCursorExclusive !== null && priorCursorExclusive > BigInt(1)) {
+    const first = fetchedIdsDesc[0]!;
+    const expectedHighest = priorCursorExclusive - BigInt(1);
+    if (first < expectedHighest) {
+      gaps.push({ start: first + BigInt(1), end: expectedHighest });
+    }
+  }
+
   for (let i = 0; i < fetchedIdsDesc.length - 1; i++) {
     const higher = fetchedIdsDesc[i]!;
     const lower = fetchedIdsDesc[i + 1]!;
@@ -905,8 +923,10 @@ export async function processDashboardRollupWorkItem(
   if (workItem.lane === "live") {
     const gaps = detectLiveGaps(state.liveCursorId, fetchedIds);
     await upsertGapRanges(client, workItem.version, gaps, nowSeconds);
-  } else if (workItem.lane === "history" && fetchedIds.length > 0) {
-    const gaps = detectHistoryGaps(fetchedIds, null);
+  } else if (workItem.lane === "history") {
+    // Pass exclusive prior cursor (including empty fetch) so leading/terminal gaps are recorded
+    // before countUnprobedGaps decides historyComplete.
+    const gaps = detectHistoryGaps(fetchedIds, state.historyCursorId);
     await upsertGapRanges(client, workItem.version, gaps, nowSeconds);
   }
 

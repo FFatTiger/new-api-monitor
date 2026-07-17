@@ -209,4 +209,187 @@ describe("dashboard rollup store integration", { skip: !url }, () => {
       await pool.end();
     }
   });
+
+  it("batchSize=1 history walk records cross-batch ID gap and claims late insert once", async () => {
+    assert.ok(url);
+    const schema = `dash_rollup_${randomUUID().replace(/-/g, "")}`;
+    const pool = new Pool({ connectionString: url, max: 2 });
+    let client: PoolClient | undefined;
+
+    try {
+      client = await pool.connect();
+      await client.query(`CREATE SCHEMA ${schema}`);
+      await client.query(`SET search_path TO ${schema}`);
+
+      await client.query(`
+        CREATE TABLE logs (
+          id BIGINT PRIMARY KEY,
+          created_at BIGINT NOT NULL,
+          token_id BIGINT,
+          token_name TEXT,
+          user_id BIGINT,
+          username TEXT,
+          model_name TEXT,
+          channel_id BIGINT,
+          channel_name TEXT,
+          prompt_tokens BIGINT,
+          completion_tokens BIGINT,
+          type BIGINT,
+          use_time DOUBLE PRECISION,
+          other TEXT
+        )
+      `);
+
+      const db = client as unknown as DbClient;
+      await ensureDashboardRollupSchema(db);
+
+      const now = Math.floor(Date.now() / 1000);
+      // Committed IDs 1,2,4,5 — missing 3 (late commit later). Boundary/live=5, history cursor=6.
+      await client.query(
+        `INSERT INTO logs (
+           id, created_at, token_id, token_name, user_id, username, model_name,
+           channel_id, channel_name, prompt_tokens, completion_tokens, type, use_time, other
+         ) VALUES
+           (1, $1, 10, 'tok', 20, 'alice', 'gpt', 30, 'ch', 5, 3, 2, 1.0, NULL),
+           (2, $1, 10, 'tok', 20, 'alice', 'gpt', 30, 'ch', 5, 3, 2, 1.0, NULL),
+           (4, $1, 10, 'tok', 20, 'alice', 'gpt', 30, 'ch', 5, 3, 2, 1.0, NULL),
+           (5, $1, 10, 'tok', 20, 'alice', 'gpt', 30, 'ch', 5, 3, 2, 1.0, NULL)`,
+        [now],
+      );
+
+      await runInTransaction(db, async (tx) => {
+        await initializeDashboardRollupRegistry(tx, [1], 1, now);
+      });
+
+      // Init sets boundary=5, live=5, history_cursor=6. Force batch size 1 walk from exclusive 6.
+      await client.query(
+        `UPDATE dashboard_rollup_state
+         SET live_cursor_id = 5,
+             source_boundary_id = 5,
+             history_cursor_id = 6,
+             history_complete = false,
+             status = 'building'
+         WHERE version = 1`,
+      );
+
+      // Env config clamps to min 10; process accepts 1..1000 — use explicit config to exercise batch=1.
+      const base = getDashboardRollupConfig({
+        DASHBOARD_ROLLUP_WORKER_ENABLED: "true",
+        DASHBOARD_ROLLUP_BATCH_SIZE: "100",
+      });
+      const config = { ...base, batchSize: 1 };
+      assert.equal(config.batchSize, 1);
+
+      // Walk history until the missing-3 interval is recorded (or history cursor exhausted).
+      let sawGap3 = false;
+      for (let i = 0; i < 12; i++) {
+        await runInTransaction(db, async (tx) => {
+          await processDashboardRollupWorkItem(
+            tx,
+            { lane: "history", version: 1 },
+            config,
+            now + i,
+          );
+        });
+        const gaps = await client.query(
+          `SELECT gap_start_id::text AS s, gap_end_id::text AS e, probe_attempts
+           FROM dashboard_rollup_id_gaps
+           WHERE version = 1
+           ORDER BY gap_start_id`,
+        );
+        for (const row of gaps.rows as Array<{ s: string; e: string }>) {
+          if (row.s === "3" && row.e === "3") {
+            sawGap3 = true;
+          }
+        }
+        if (sawGap3) break;
+      }
+      assert.ok(sawGap3, "history batchSize=1 walk must record gap [3,3]");
+
+      // Empty gap probe once if still unprobed (makes permanently empty eligible for readiness later).
+      // Insert late id3 before/after first probe — either order must claim exactly once via gap lane.
+      await client.query(
+        `INSERT INTO logs (
+           id, created_at, token_id, token_name, user_id, username, model_name,
+           channel_id, channel_name, prompt_tokens, completion_tokens, type, use_time, other
+         ) VALUES
+           (3, $1, 10, 'tok', 20, 'alice', 'gpt', 30, 'ch', 5, 3, 2, 1.0, NULL)`,
+        [now],
+      );
+
+      // Ensure gap is due now so gap opportunity can claim source 3.
+      await client.query(
+        `UPDATE dashboard_rollup_id_gaps
+         SET next_probe_at = 0
+         WHERE version = 1 AND gap_start_id = 3 AND gap_end_id = 3`,
+      );
+
+      const gapResult = await runInTransaction(db, async (tx) => {
+        return processDashboardRollupWorkItem(
+          tx,
+          { lane: "gap", version: 1, gapStartId: BigInt(3), gapEndId: BigInt(3) },
+          config,
+          now + 100,
+        );
+      });
+      assert.equal(gapResult.fetchedRows, 1);
+      assert.equal(gapResult.claimedRows, 1);
+
+      // Exactly-once: second gap probe claims nothing.
+      await client.query(
+        `UPDATE dashboard_rollup_id_gaps
+         SET next_probe_at = 0
+         WHERE version = 1 AND gap_start_id = 3 AND gap_end_id = 3`,
+      ).catch(() => undefined);
+      // Gap may already be deleted after fill; re-run via direct claim check.
+      const claim3 = await client.query(
+        `SELECT count(*)::text AS c
+         FROM dashboard_rollup_processed_sources
+         WHERE version = 1 AND source_id = 3`,
+      );
+      assert.equal(Number((claim3.rows[0] as { c: string }).c), 1, "source 3 claimed exactly once");
+
+      // Process remaining history rows if any still unclaimed (batch walk should have claimed 5,4,2,1).
+      for (let i = 0; i < 8; i++) {
+        await runInTransaction(db, async (tx) => {
+          await processDashboardRollupWorkItem(
+            tx,
+            { lane: "history", version: 1 },
+            config,
+            now + 200 + i,
+          );
+        });
+      }
+
+      const claims = await client.query(
+        `SELECT count(*)::text AS c FROM dashboard_rollup_processed_sources WHERE version = 1`,
+      );
+      assert.equal(Number((claims.rows[0] as { c: string }).c), 5, "all five sources claimed once");
+
+      const requestTotal = await client.query(
+        `SELECT coalesce(sum(request_count), 0)::text AS s
+         FROM dashboard_rollups
+         WHERE version = 1 AND grain = 4 AND dimension_id IN (
+           SELECT id FROM dashboard_rollup_dimensions
+           WHERE version = 1 AND dimension_mask = 0
+         )`,
+      );
+      assert.equal(
+        Number((requestTotal.rows[0] as { s: string }).s),
+        5,
+        "global all-time request total includes all 5 rows with no double count",
+      );
+    } finally {
+      try {
+        if (client) {
+          await client.query(`SET search_path TO ${schema}`);
+          await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+        }
+      } catch {
+        // best-effort cleanup
+      }
+      client?.release();
+      await pool.end();
+    }
+  });
 });
