@@ -131,3 +131,17 @@ export function formatStatus(status: number) {
       return `状态 ${status}`;
   }
 }
+
+// new-api quota 美元换算（QuotaPerUnit 默认 500000，options 表未覆盖）
+export const QUOTA_PER_UNIT = 500000;
+
+export function quotaToUsd(quota: number | string): number {
+  const n = typeof quota === "string" ? Number(quota) : quota;
+  if (!Number.isFinite(n)) return 0;
+  return n / QUOTA_PER_UNIT;
+}
+
+export function formatUsd(usd: number): string {
+  if (!Number.isFinite(usd)) return "-";
+  return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
