@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { computeSubscriptionStats, computeUsageShare } from "./subscriptions.ts";
+import { computeSubscriptionStats, computeUsageShare } from "./subscription-stats.ts";
 
 describe("computeSubscriptionStats", () => {
   it("sums amount_used and amount_total across rows", () => {

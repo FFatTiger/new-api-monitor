@@ -1,20 +1,6 @@
-import { query } from "../db.ts";
+import type { SubscriptionRow } from "./subscription-stats";
 
-export interface SubscriptionRow {
-  id: number;
-  userId: number | null;
-  username: string | null;
-  displayName: string | null;
-  planTitle: string | null;
-  upgradeGroup: string;
-  amountTotal: string;
-  amountUsed: string;
-  amountRemaining: string;
-  startTime: number | null;
-  endTime: number | null;
-  status: string | null;
-  source: string | null;
-}
+export type { SubscriptionRow };
 
 export interface SubscriptionSummary {
   totalCount: number;
@@ -26,30 +12,10 @@ export interface SubscriptionSummary {
 export interface SubscriptionsOverview {
   summary: SubscriptionSummary;
   rows: SubscriptionRow[];
+  generatedAt: number; // 查询完成时的服务端 Unix 秒
 }
 
-/** 纯函数：对已取回的行汇总（供单测 + 占比分母复用）。 */
-export function computeSubscriptionStats(
-  rows: ReadonlyArray<Pick<SubscriptionRow, "amountUsed" | "amountTotal">>,
-): { totalUsed: number; totalQuota: number } {
-  let totalUsed = 0;
-  let totalQuota = 0;
-  for (const r of rows) {
-    const used = Number(r.amountUsed);
-    const total = Number(r.amountTotal);
-    if (Number.isFinite(used)) totalUsed += used;
-    if (Number.isFinite(total)) totalQuota += total;
-  }
-  return { totalUsed, totalQuota };
-}
-
-/** 纯函数：单个订阅消耗占比（0..1），total=0 时返回 0。 */
-export function computeUsageShare(amountUsed: string, totalUsed: number): number {
-  if (!totalUsed) return 0;
-  const used = Number(amountUsed);
-  if (!Number.isFinite(used)) return 0;
-  return used / totalUsed;
-}
+import { query } from "../db.ts";
 
 interface SubscriptionDbRow extends Record<string, string | number | null> {
   id: number;
@@ -123,5 +89,5 @@ export async function getSubscriptionsOverview(): Promise<SubscriptionsOverview>
     totalQuota: first ? first.total_quota : "0",
   };
 
-  return { summary, rows };
+  return { summary, rows, generatedAt: Math.floor(Date.now() / 1000) };
 }

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const tabs = [
   { href: "/", label: "监控概览" },
   { href: "/quota", label: "账号 Quota" },
+  { href: "/subscriptions", label: "订阅" },
   { href: "/oauth", label: "OAuth 登录" },
 ];
 
