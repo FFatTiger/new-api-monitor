@@ -1,5 +1,5 @@
 import { ProgressBar, getProgressTone } from "@/components/quota/progress-bar";
-import { formatDateTime, formatPercent } from "@/lib/format";
+import { formatDateTime, formatPercent, formatUsd, quotaToUsd } from "@/lib/format";
 import {
   computeSubscriptionStats,
   computeUsageShare,
@@ -90,7 +90,7 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
                     <td className="px-4 py-3 text-[0.82rem] text-[var(--foreground-muted)]">{row.planTitle || "-"}</td>
                     <td className="px-4 py-3 text-[0.82rem] text-[var(--foreground-muted)]">{row.upgradeGroup}</td>
                     <td className="px-4 py-3 text-right ds-mono" title={`quota ${formatQuotaCompact(row.amountUsed)}`}>
-                      {formatQuotaCompact(row.amountUsed)}
+                      {formatUsd(quotaToUsd(row.amountUsed))}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono">{formatPercent(share)}</td>
                     <td className="px-4 py-3 min-w-[8rem]">

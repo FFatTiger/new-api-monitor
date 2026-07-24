@@ -1,3 +1,4 @@
+import { formatUsd, quotaToUsd } from "@/lib/format";
 import type { SubscriptionSummary } from "@/lib/queries/subscriptions";
 
 interface SubscriptionsSummaryProps {
@@ -12,9 +13,15 @@ function formatQuotaCompact(quota: string): string {
 
 export function SubscriptionsSummary({ summary }: SubscriptionsSummaryProps) {
   const cards = [
-    { label: "订阅总数", value: String(summary.totalCount), foot: "条" },
-    { label: "活跃订阅", value: String(summary.activeCount), foot: "条" },
-    { label: "总已消耗额度", value: formatQuotaCompact(summary.totalUsedQuota), foot: "quota" },
+    { label: "订阅总数", value: String(summary.totalCount), foot: "条", isQuota: false, raw: "" },
+    { label: "活跃订阅", value: String(summary.activeCount), foot: "条", isQuota: false, raw: "" },
+    {
+      label: "总已消耗额度",
+      value: formatUsd(quotaToUsd(summary.totalUsedQuota)),
+      foot: "quota",
+      isQuota: true,
+      raw: summary.totalUsedQuota,
+    },
   ];
 
   return (
@@ -24,7 +31,13 @@ export function SubscriptionsSummary({ summary }: SubscriptionsSummaryProps) {
           <div key={c.label} className="ds-card px-4 py-3 space-y-1.5 shadow-[0_0_0_1px_var(--surface-ring-soft)]">
             <p className="text-[0.72rem] text-[var(--foreground-soft)]">{c.label}</p>
             <p className="ds-mono text-[1.05rem] font-semibold text-[var(--foreground)]">{c.value}</p>
-            <p className="text-[0.66rem] text-[var(--foreground-muted)]">{c.foot}</p>
+            {c.isQuota ? (
+              <p className="ds-mono text-[0.66rem] text-[var(--foreground-muted)]" title={`quota ${c.raw}`}>
+                quota {formatQuotaCompact(c.raw)}
+              </p>
+            ) : (
+              <p className="text-[0.66rem] text-[var(--foreground-muted)]">{c.foot}</p>
+            )}
           </div>
         ))}
       </div>
