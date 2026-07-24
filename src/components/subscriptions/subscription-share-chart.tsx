@@ -4,25 +4,22 @@ import { useMemo } from "react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { formatPercent } from "@/lib/format";
-import {
-  computeSubscriptionStats,
-  computeUsageShare,
-  type SubscriptionRow,
-} from "@/lib/queries/subscription-stats";
+import { computeUsageShare } from "@/lib/queries/subscription-stats";
+import type { UserUsageRow } from "@/lib/queries/subscriptions";
 
 interface SubscriptionShareChartProps {
-  rows: SubscriptionRow[];
+  rows: UserUsageRow[];
 }
 
 const TOP_N = 10;
 
-function userLabel(row: SubscriptionRow): string {
+function userLabel(row: UserUsageRow): string {
   return row.username || (row.userId ? `#${row.userId}` : "未知");
 }
 
 export function SubscriptionShareChart({ rows }: SubscriptionShareChartProps) {
   const data = useMemo(() => {
-    const { totalUsed } = computeSubscriptionStats(rows);
+    const totalUsed = Number(rows[0]?.totalUsedQuota ?? 0);
     if (!totalUsed) return [];
 
     const ranked = rows
@@ -53,7 +50,12 @@ export function SubscriptionShareChart({ rows }: SubscriptionShareChartProps) {
       <div className="h-[320px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
-            <XAxis type="number" tickFormatter={(v) => formatPercent(typeof v === "number" ? v : Number(v ?? 0))} stroke="var(--foreground-soft)" fontSize={11} />
+            <XAxis
+              type="number"
+              tickFormatter={(v) => formatPercent(typeof v === "number" ? v : Number(v ?? 0))}
+              stroke="var(--foreground-soft)"
+              fontSize={11}
+            />
             <YAxis
               type="category"
               dataKey="name"
