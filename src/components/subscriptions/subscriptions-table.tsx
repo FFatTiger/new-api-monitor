@@ -64,7 +64,6 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
                 <th className="px-4 py-3">套餐</th>
                 <th className="px-4 py-3">升级组</th>
                 <th className="px-4 py-3 text-right">已消耗</th>
-                <th className="px-4 py-3 text-right">剩余</th>
                 <th className="px-4 py-3 text-right">消耗占比</th>
                 <th className="px-4 py-3">订阅进度</th>
                 <th className="px-4 py-3">有效期</th>
@@ -92,9 +91,6 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
                     <td className="px-4 py-3 text-[0.82rem] text-[var(--foreground-muted)]">{row.upgradeGroup}</td>
                     <td className="px-4 py-3 text-right ds-mono" title={`quota ${formatQuotaCompact(row.amountUsed)}`}>
                       {formatQuotaCompact(row.amountUsed)}
-                    </td>
-                    <td className="px-4 py-3 text-right ds-mono text-[var(--foreground-soft)]" title={`quota ${formatQuotaCompact(row.amountRemaining)}`}>
-                      {formatQuotaCompact(row.amountRemaining)}
                     </td>
                     <td className="px-4 py-3 text-right ds-mono">{formatPercent(share)}</td>
                     <td className="px-4 py-3 min-w-[8rem]">
