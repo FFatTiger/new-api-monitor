@@ -1,5 +1,5 @@
 import { ProgressBar, getProgressTone } from "@/components/quota/progress-bar";
-import { formatDateTime, formatPercent, formatUsd, quotaToUsd } from "@/lib/format";
+import { formatDateTime, formatPercent } from "@/lib/format";
 import {
   computeSubscriptionStats,
   computeUsageShare,
@@ -15,12 +15,9 @@ function userLabel(row: SubscriptionRow): string {
   return row.username || (row.userId ? `用户 #${row.userId}` : "未知用户");
 }
 
-function quotaCell(quota: string): { usd: string; title: string } {
+function formatQuotaCompact(quota: string): string {
   const n = Number(quota);
-  return {
-    usd: formatUsd(quotaToUsd(n)),
-    title: Number.isFinite(n) ? n.toLocaleString("en-US") : quota,
-  };
+  return Number.isFinite(n) ? n.toLocaleString("en-US") : quota;
 }
 
 export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
@@ -35,7 +32,6 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
               <th className="px-3 py-2.5 font-medium">用户</th>
               <th className="px-3 py-2.5 font-medium">套餐</th>
               <th className="px-3 py-2.5 font-medium">升级组</th>
-              <th className="px-3 py-2.5 text-right font-medium">订阅额度</th>
               <th className="px-3 py-2.5 text-right font-medium">已消耗</th>
               <th className="px-3 py-2.5 text-right font-medium">剩余</th>
               <th className="px-3 py-2.5 text-right font-medium">消耗占比</th>
@@ -46,9 +42,6 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
           </thead>
           <tbody>
             {rows.map((row) => {
-              const totalCell = quotaCell(row.amountTotal);
-              const usedCell = quotaCell(row.amountUsed);
-              const remainCell = quotaCell(row.amountRemaining);
               const share = computeUsageShare(row.amountUsed, totalUsed);
               const subPercent = Number(row.amountTotal) > 0
                 ? (Number(row.amountUsed) / Number(row.amountTotal)) * 100
@@ -66,14 +59,11 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
                       {row.upgradeGroup}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-right ds-mono" title={`quota ${totalCell.title}`}>
-                    {totalCell.usd}
+                  <td className="px-3 py-2.5 text-right ds-mono font-medium" title={`quota ${formatQuotaCompact(row.amountUsed)}`}>
+                    {formatQuotaCompact(row.amountUsed)}
                   </td>
-                  <td className="px-3 py-2.5 text-right ds-mono font-medium" title={`quota ${usedCell.title}`}>
-                    {usedCell.usd}
-                  </td>
-                  <td className="px-3 py-2.5 text-right ds-mono text-[var(--foreground-soft)]" title={`quota ${remainCell.title}`}>
-                    {remainCell.usd}
+                  <td className="px-3 py-2.5 text-right ds-mono text-[var(--foreground-soft)]" title={`quota ${formatQuotaCompact(row.amountRemaining)}`}>
+                    {formatQuotaCompact(row.amountRemaining)}
                   </td>
                   <td className="px-3 py-2.5 text-right ds-mono font-medium">{formatPercent(share)}</td>
                   <td className="px-3 py-2.5 min-w-[8rem]">
@@ -105,7 +95,7 @@ export function SubscriptionsTable({ rows, now }: SubscriptionsTableProps) {
             })}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-3 py-8 text-center text-[var(--foreground-soft)]">
+                <td colSpan={9} className="px-3 py-8 text-center text-[var(--foreground-soft)]">
                   暂无订阅数据
                 </td>
               </tr>
