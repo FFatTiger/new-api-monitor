@@ -18,6 +18,8 @@ describe("clickhouse query safety", () => {
     assert.match(SOURCE, /wait_end_of_query:\s*1/);
     assert.match(SOURCE, /SELECT \* FROM \(SELECT 'token'/);
     assert.match(SOURCE, /SELECT \* FROM \(SELECT 'model' kind/);
+    assert.match(SOURCE, /sum\(input_tokens\) input_sum/);
+    assert.doesNotMatch(SOURCE, /sum\(input_tokens\) input_tokens/);
     assert.doesNotMatch(SOURCE, /FROM\s+logs/i);
   });
 

@@ -156,8 +156,8 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
     const cte = dedupCte(filters);
     const common = { query_params: cte.params };
     const summaryPromise = jsonQuery<Record<string, unknown>>(client, { ...common, query: `WITH ${cte.sql} SELECT
-      sum(request_count) request_count, sum(input_tokens) input_tokens, sum(output_tokens) output_tokens,
-      sum(input_tokens + output_tokens) total_tokens, sum(cache_tokens) cache_tokens,
+      sum(request_count) request_count, sum(input_tokens) input_sum, sum(output_tokens) output_sum,
+      sum(input_tokens) + sum(output_tokens) total_sum, sum(cache_tokens) cache_sum,
       sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count,
       uniqExactIf(user_id, user_id != 0) active_users, uniqExactIf(channel_id, channel_id != 0) active_channels,
       sum(attempt_count) attempts, sum(success_count) successes, sum(error_count) errors,
@@ -175,10 +175,10 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
       UNION ALL SELECT * FROM (SELECT 'channel' kind, toString(channel_id) id, if(max(channel_name)='',concat('渠道 ',toString(channel_id)),max(channel_name)) name, sum(attempt_count) attempts, sum(success_count) successes, sum(error_count) errors, sum(first_token_latency_sum) frt_sum, sum(first_token_latency_count) frt_count, sum(response_time_sum) response_sum, sum(response_time_count) response_count, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY channel_id HAVING attempts > 0 ORDER BY errors/attempts DESC LIMIT 12)
     ) SELECT * FROM stable` });
     const bucket = filters.granularity === "hour" ? "toStartOfHour(toDateTime(bucket_start, 'Asia/Shanghai'))" : "toStartOfDay(toDateTime(bucket_start, 'Asia/Shanghai'), 'Asia/Shanghai')";
-    const trendPromise = jsonQuery<Record<string, unknown>>(client, { ...common, query: `WITH ${cte.sql} SELECT toUnixTimestamp(${bucket}) bucket_ts, sum(request_count) request_count, sum(input_tokens) input_tokens, sum(output_tokens) output_tokens, sum(input_tokens+output_tokens) total_tokens, sum(cache_tokens) cache_tokens FROM dedup GROUP BY bucket_ts ORDER BY bucket_ts` });
+    const trendPromise = jsonQuery<Record<string, unknown>>(client, { ...common, query: `WITH ${cte.sql} SELECT toUnixTimestamp(${bucket}) bucket_ts, sum(request_count) request_count, sum(input_tokens) input_sum, sum(output_tokens) output_sum, sum(input_tokens) + sum(output_tokens) total_sum, sum(cache_tokens) cache_sum FROM dedup GROUP BY bucket_ts ORDER BY bucket_ts` });
     const [summaryRows, rankingRows, stabilityRows, trendRows] = await Promise.all([summaryPromise, rankingsPromise, stabilityPromise, trendPromise]);
     const s = summaryRows[0] ?? {};
-    const summary: SummaryMetrics = { requestCount:num(s.request_count), inputTokens:num(s.input_tokens), outputTokens:num(s.output_tokens), totalTokens:num(s.total_tokens), cacheTokens:num(s.cache_tokens), avgOutputTokensPerSec:nullableDivide(s.speed_sum,s.speed_count), activeUserCount:num(s.active_users), activeChannelCount:num(s.active_channels) };
+    const summary: SummaryMetrics = { requestCount:num(s.request_count), inputTokens:num(s.input_sum), outputTokens:num(s.output_sum), totalTokens:num(s.total_sum), cacheTokens:num(s.cache_sum), avgOutputTokensPerSec:nullableDivide(s.speed_sum,s.speed_count), activeUserCount:num(s.active_users), activeChannelCount:num(s.active_channels) };
     const stabilitySummary: StabilitySummary = { totalAttempts:num(s.attempts), successCount:num(s.successes), errorCount:num(s.errors), errorRate:num(s.attempts)>0?num(s.errors)/num(s.attempts):null, avgFirstTokenLatency:nullableDivide(s.frt_sum,s.frt_count), avgTotalResponseTime:nullableDivide(s.response_sum,s.response_count) };
     const rank = (kind:string)=>rankingRows.filter(r=>r.kind===kind);
     const tokenRankings: TokenRankingRow[] = rank("token").map(r=>({ tokenId:num(r.id),tokenName:String(r.name??""),username:String(r.secondary??""),displayName:"",status:-1,expiredTime:0,requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) }));
@@ -189,7 +189,7 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
     const mapStable=(r:Record<string,unknown>)=>({ totalAttempts:num(r.attempts),successCount:num(r.successes),errorCount:num(r.errors),errorRate:num(r.attempts)>0?num(r.errors)/num(r.attempts):0,avgFirstTokenLatency:nullableDivide(r.frt_sum,r.frt_count),avgTotalResponseTime:nullableDivide(r.response_sum,r.response_count),avgOutputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) });
     const modelStability: ModelStabilityRow[] = stable("model").map(r=>({modelName:String(r.name??""),...mapStable(r)}));
     const channelStability: ChannelStabilityRow[] = stable("channel").map(r=>({channelId:num(r.id),channelName:String(r.name??""),type:-1,status:-1,...mapStable(r)}));
-    const trend: TrendPoint[] = trendRows.map(r=>({bucketTs:num(r.bucket_ts),requestCount:num(r.request_count),inputTokens:num(r.input_tokens),outputTokens:num(r.output_tokens),totalTokens:num(r.total_tokens),cacheTokens:num(r.cache_tokens)}));
+    const trend: TrendPoint[] = trendRows.map(r=>({bucketTs:num(r.bucket_ts),requestCount:num(r.request_count),inputTokens:num(r.input_sum),outputTokens:num(r.output_sum),totalTokens:num(r.total_sum),cacheTokens:num(r.cache_sum)}));
     return {kind:"ready",data:{summary,stabilitySummary,tokenRankings,userRankings,modelRankings,channelRankings,modelStability,channelStability,trend,granularity:filters.granularity}};
   } catch (error) {
     console.error("[clickhouse-query] dashboard packet failed", error);
