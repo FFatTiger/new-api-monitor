@@ -562,7 +562,7 @@ describe("dashboard rollup worker", () => {
     assert.equal(initCalls, 1);
   });
 
-  it("instrumentation source starts both workers under Node guard", () => {
+  it("instrumentation source starts quota and ClickHouse workers under Node guard", () => {
     const instrumentationPath = join(
       dirname(fileURLToPath(import.meta.url)),
       "../../instrumentation.ts",
@@ -570,11 +570,12 @@ describe("dashboard rollup worker", () => {
     const source = readFileSync(instrumentationPath, "utf8");
     assert.match(source, /NEXT_RUNTIME === ["']nodejs["']/);
     assert.match(source, /startQuotaBackgroundSampler/);
-    assert.match(source, /startDashboardRollupWorker/);
+    assert.match(source, /startClickHouseSyncWorker/);
+    assert.doesNotMatch(source, /startDashboardRollupWorker/);
     assert.match(source, /Promise\.all/);
     assert.match(
       source,
-      /lib\/quota\/background-sampler|lib\/dashboard\/rollup-worker/,
+      /lib\/quota\/background-sampler|lib\/clickhouse\/sync-worker/,
     );
   });
 

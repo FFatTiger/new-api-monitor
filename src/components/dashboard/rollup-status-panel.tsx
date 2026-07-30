@@ -21,7 +21,9 @@ export function DashboardRollupStatusPanel({
     message ??
     readiness?.safeMessage ??
     "长期统计暂时不可用，请稍后重试。";
-  const resolvedRows = processedRows ?? readiness?.processedRows ?? 0;
+  const resolvedRows = processedRows ?? readiness?.processedRows;
+
+  const processedLabel = readiness ? "已永久处理" : "已同步处理";
 
   return (
     <section className="ds-panel px-4 py-5 sm:px-5 sm:py-6">
@@ -32,9 +34,11 @@ export function DashboardRollupStatusPanel({
       <p className="mt-4 whitespace-pre-line text-sm leading-6 text-[var(--foreground-soft)]">
         {resolvedMessage}
       </p>
-      <p className="mt-4 text-xs text-[var(--foreground-faint)]">
-        已永久处理 {resolvedRows.toLocaleString("zh-CN")} 条日志。
-      </p>
+      {resolvedRows !== undefined ? (
+        <p className="mt-4 text-xs text-[var(--foreground-faint)]">
+          {processedLabel} {resolvedRows.toLocaleString("zh-CN")} 条日志。
+        </p>
+      ) : null}
     </section>
   );
 }

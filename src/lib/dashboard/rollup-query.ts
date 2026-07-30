@@ -13,6 +13,7 @@ import type {
   SummaryMetrics,
   TokenDetailData,
   TokenRankingRow,
+  TrendGranularity,
   TrendPoint,
   UserRankingRow,
 } from "../queries/dashboard.ts";
@@ -54,7 +55,7 @@ export interface DashboardRollupPacket {
   modelStability: ModelStabilityRow[];
   channelStability: ChannelStabilityRow[];
   trend: TrendPoint[];
-  granularity: "day";
+  granularity: TrendGranularity;
 }
 
 export type DashboardRollupPacketResult =

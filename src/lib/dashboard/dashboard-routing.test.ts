@@ -260,36 +260,15 @@ describe("assertLegacyDashboardFilters", () => {
   });
 });
 
-describe("page and shell long-range safety (static)", () => {
-  it("page long branch creates one packet promise and does not call legacy loaders there", () => {
+describe("ClickHouse-only dashboard routing (static)", () => {
+  it("page creates one ClickHouse packet and contains no legacy dashboard loaders", () => {
     const page = readFileSync(PAGE_SOURCE, "utf8");
-    assert.match(page, /resolveDashboardQueryPlan/);
-    assert.match(page, /getDashboardRollupPacket/);
+    assert.match(page, /getClickHouseDashboardPacket/);
+    assert.match(page, /getClickHouseShellData/);
     assert.match(page, /DashboardRollupStatusPanel/);
-
-    // Single packet promise creation (not four legacy loaders in rollup path).
-    const packetPromiseMatches = page.match(/getDashboardRollupPacket\s*\(/g) ?? [];
-    assert.equal(packetPromiseMatches.length, 1);
-
-    // Legacy loaders remain available for short path only.
-    assert.match(page, /getDashboardSummaryData/);
-    assert.match(page, /getDashboardRankingData/);
-    assert.match(page, /getDashboardStabilityData/);
-    assert.match(page, /getDashboardTrendData/);
-
-    // Long-range branch structure: unavailable and rollup kinds checked before legacy sections.
-    const unavailableIdx = page.indexOf('plan.kind === "unavailable"') >= 0
-      ? page.indexOf('plan.kind === "unavailable"')
-      : page.indexOf('kind === "unavailable"');
-    const rollupIdx = page.indexOf('plan.kind === "rollup"') >= 0
-      ? page.indexOf('plan.kind === "rollup"')
-      : page.indexOf('kind === "rollup"');
-    const summarySectionIdx = page.indexOf("<SummarySection");
-    assert.ok(unavailableIdx >= 0, "page must branch on unavailable");
-    assert.ok(rollupIdx >= 0, "page must branch on rollup");
-    assert.ok(summarySectionIdx >= 0, "page must retain legacy SummarySection");
-    assert.ok(unavailableIdx < summarySectionIdx, "unavailable branch before legacy sections");
-    assert.ok(rollupIdx < summarySectionIdx, "rollup branch before legacy sections");
+    assert.equal((page.match(/getClickHouseDashboardPacket\s*\(/g) ?? []).length, 1);
+    assert.doesNotMatch(page, /getDashboardSummaryData|getDashboardRankingData|getDashboardStabilityData|getDashboardTrendData|getDashboardRollupPacket|resolveDashboardQueryPlan/);
+    assert.match(page, /不会回退执行 PostgreSQL 原始日志聚合/);
   });
 
   it("dashboard query module classifies before logs min/max and guards raw loaders", () => {
@@ -647,42 +626,13 @@ describe("token detail routing", () => {
     assert.equal(legacyCalls, 0);
   });
 
-  it("token-detail route classifies before loaders and has no catch fallback to legacy", () => {
+  it("token-detail route uses ClickHouse only and has no PostgreSQL fallback", () => {
     const source = readFileSync(TOKEN_DETAIL_ROUTE_SOURCE, "utf8");
-    const routing = readFileSync(ROUTING_SOURCE, "utf8");
-    assert.match(source, /resolveDashboardQueryPlan/);
-    assert.match(source, /getDashboardRollupTokenDetail/);
-    assert.match(source, /runTokenDetailRequest/);
-    assert.match(source, /getTokenDetailData/);
-
-    // Route wires plan resolution + rollup before/instead of only legacy.
-    assert.ok(source.includes("resolvePlan: resolveDashboardQueryPlan"));
-    assert.ok(source.includes("getLegacyDetail: getTokenDetailData"));
-    assert.ok(source.includes("getRollupDetail: getDashboardRollupTokenDetail"));
-    assert.match(source, /headers:\s*result\.headers/);
-
-    // No catch-block fallback that re-invokes legacy detail after failure.
-    assert.doesNotMatch(
-      source,
-      /catch\s*\([^)]*\)\s*\{[\s\S]*getTokenDetailData/,
-      "route must not call getTokenDetailData inside catch fallback",
-    );
-    // Cache headers owned by DI handler used by the route.
-    assert.match(
-      routing,
-      /Cache-Control["']?\s*:\s*["']no-store, no-cache, must-revalidate["']/,
-    );
-    assert.match(routing, /export async function runTokenDetailRequest/);
-    assert.match(routing, /plan\.kind === ["']legacy["']/);
-    assert.match(routing, /plan\.kind === ["']unavailable["']/);
-    // After rollup classification, never call legacy detail.
-    assert.ok(routing.includes("// plan.kind === \"rollup\""));
-    assert.doesNotMatch(
-      routing.slice(routing.indexOf("// plan.kind === \"rollup\"")),
-      /getLegacyDetail/,
-      "rollup path must not call getLegacyDetail",
-    );
-    // Legacy load uses resolved plan.filters, not raw search params.
-    assert.match(routing, /getLegacyDetail\(\s*plan\.filters/);
+    assert.match(source, /resolveClickHouseFilters/);
+    assert.match(source, /getClickHouseTokenDetail/);
+    assert.match(source, /getClickHouseConfig/);
+    assert.doesNotMatch(source, /resolveDashboardQueryPlan|getDashboardRollupTokenDetail|runTokenDetailRequest|getTokenDetailData|getLegacyDetail/);
+    assert.match(source, /Cache-Control.*no-store, no-cache, must-revalidate/);
+    assert.match(source, /不会回退查询 PostgreSQL 日志/);
   });
 });

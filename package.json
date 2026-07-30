@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start -p 31891",
     "lint": "eslint",
-    "test:dashboard": "node --experimental-strip-types --test src/lib/db.test.ts src/lib/dashboard/*.test.ts"
+    "test:dashboard": "node --experimental-strip-types --test src/lib/db.test.ts src/lib/dashboard/*.test.ts",
+    "test:clickhouse": "node --experimental-strip-types --test src/lib/clickhouse/*.test.ts"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.23.1",
     "next": "16.2.6",
     "pg": "^8.20.0",
     "react": "19.2.5",
