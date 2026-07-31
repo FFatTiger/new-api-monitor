@@ -1,21 +1,17 @@
+import type { SubscriptionBillingFilters } from "./subscription-billing-filters.ts";
+
 export interface SubscriptionSummary {
-  totalCount: number; // 订阅条数
-  activeCount: number; // 活跃订阅条数
-  totalUsedQuota: string; // 所有用户已消耗总额
+  totalCount: number; // 当前数据库中的订阅条数
+  activeCount: number; // 当前数据库中的活跃订阅条数
+  totalUsedQuota: string; // 所选时间范围内的订阅计费日志 quota 总额
 }
 
 export interface UserUsageRow {
   userId: number | null;
   username: string | null;
   displayName: string | null;
-  amountUsed: string; // 该用户所有订阅已消耗合计
-  amountTotal: string; // 该用户所有订阅总额度合计
-  subscriptionCount: number; // 该用户的订阅条数
-  plans: string; // 套餐标题（逗号分隔去重）
-  upgradeGroups: string; // 升级组（逗号分隔去重）
-  earliestEnd: number | null; // 最早到期时间
-  latestEnd: number | null; // 最晚到期时间
-  totalUsedQuota: string; // 全局已消耗总额（占比分母）
+  amountUsed: string; // 该用户在所选时间范围内的订阅计费日志 quota 合计
+  totalUsedQuota: string; // 所选时间范围全局订阅消费总额（占比分母）
 }
 
 export interface SubscriptionsOverview {
@@ -29,70 +25,97 @@ import { computeUsageShare } from "./subscription-stats.ts";
 
 export { computeUsageShare };
 
-interface UserUsageDbRow extends Record<string, string | number | null> {
+interface UserUsageDbRow extends Record<string, string | number | boolean | null> {
+  has_usage: boolean;
   user_id: number | null;
   username: string | null;
   display_name: string | null;
   amount_used: string;
-  amount_total: string;
-  subscription_count: number;
-  plans: string | null;
-  upgrade_groups: string | null;
-  earliest_end: number | null;
-  latest_end: number | null;
   total_used_quota: string;
   total_count: number;
   active_count: number;
 }
 
-const SQL = `
-WITH per_user AS (
+export interface SubscriptionBillingQueryPlan {
+  sql: string;
+  values: number[];
+}
+
+export function buildSubscriptionsQuery(
+  filters: SubscriptionBillingFilters,
+): SubscriptionBillingQueryPlan {
+  const values: number[] = [];
+  const timeClauses: string[] = [];
+
+  if (filters.startTimestamp !== null) {
+    values.push(filters.startTimestamp);
+    timeClauses.push(`AND l.created_at >= $${values.length}`);
+  }
+
+  if (filters.endTimestamp !== null) {
+    values.push(filters.endTimestamp);
+    timeClauses.push(`AND l.created_at <= $${values.length}`);
+  }
+
+  const sql = `
+WITH subscription_logs AS MATERIALIZED (
   SELECT
-    us.user_id,
-    SUM(us.amount_used)  AS amount_used,
-    SUM(us.amount_total) AS amount_total,
-    COUNT(*)             AS subscription_count,
-    STRING_AGG(DISTINCT sp.title, ', ')                                  AS plans,
-    STRING_AGG(DISTINCT NULLIF(us.upgrade_group, ''), ', ')              AS upgrade_groups,
-    MIN(us.end_time) AS earliest_end,
-    MAX(us.end_time) AS latest_end
-  FROM user_subscriptions us
-  LEFT JOIN subscription_plans sp ON sp.id = us.plan_id
-  GROUP BY us.user_id
+    l.user_id,
+    l.quota
+  FROM logs l
+  WHERE l.type = 2
+    ${timeClauses.join("\n    ")}
+    AND l.other LIKE '{%'
+    AND l.other ~ '"billing_source"[[:space:]]*:[[:space:]]*"subscription"'
+    -- Async task billing is excluded until its logs reliably carry subscription billing attribution.
+),
+log_users AS (
+  SELECT
+    sl.user_id,
+    COALESCE(SUM(sl.quota), 0) AS amount_used
+  FROM subscription_logs sl
+  GROUP BY sl.user_id
+),
+subscription_summary AS (
+  SELECT
+    COUNT(*) AS total_count,
+    COUNT(*) FILTER (WHERE status = 'active') AS active_count
+  FROM user_subscriptions
+),
+billing_total AS (
+  SELECT COALESCE(SUM(quota), 0) AS total_used_quota
+  FROM subscription_logs
 )
 SELECT
-  pu.user_id,
+  (lu.amount_used IS NOT NULL) AS has_usage,
+  lu.user_id,
   u.username,
   u.display_name,
-  pu.amount_used::text  AS amount_used,
-  pu.amount_total::text AS amount_total,
-  pu.subscription_count,
-  COALESCE(NULLIF(pu.plans, ''), '-')          AS plans,
-  COALESCE(NULLIF(pu.upgrade_groups, ''), '-') AS upgrade_groups,
-  pu.earliest_end,
-  pu.latest_end,
-  (SELECT SUM(amount_used)::text FROM user_subscriptions) AS total_used_quota,
-  (SELECT COUNT(*) FROM user_subscriptions)               AS total_count,
-  (SELECT COUNT(*) FROM user_subscriptions WHERE status = 'active') AS active_count
-FROM per_user pu
-LEFT JOIN users u ON u.id = pu.user_id
-ORDER BY pu.amount_used DESC
+  COALESCE(lu.amount_used, 0)::text AS amount_used,
+  bt.total_used_quota::text AS total_used_quota,
+  ss.total_count,
+  ss.active_count
+FROM billing_total bt
+CROSS JOIN subscription_summary ss
+LEFT JOIN log_users lu ON TRUE
+LEFT JOIN users u ON u.id = lu.user_id
+ORDER BY lu.amount_used DESC NULLS LAST
 `;
 
-export async function getSubscriptionsOverview(): Promise<SubscriptionsOverview> {
-  const result = await query<UserUsageDbRow>(SQL);
+  return { sql, values };
+}
 
-  const rows: UserUsageRow[] = result.rows.map((r) => ({
+export async function getSubscriptionsOverview(
+  filters: SubscriptionBillingFilters,
+): Promise<SubscriptionsOverview> {
+  const plan = buildSubscriptionsQuery(filters);
+  const result = await query<UserUsageDbRow>(plan.sql, plan.values);
+
+  const rows: UserUsageRow[] = result.rows.filter((r) => r.has_usage).map((r) => ({
     userId: r.user_id,
     username: r.username,
     displayName: r.display_name,
     amountUsed: r.amount_used,
-    amountTotal: r.amount_total,
-    subscriptionCount: r.subscription_count,
-    plans: r.plans || "-",
-    upgradeGroups: r.upgrade_groups || "-",
-    earliestEnd: r.earliest_end,
-    latestEnd: r.latest_end,
     totalUsedQuota: r.total_used_quota,
   }));
 

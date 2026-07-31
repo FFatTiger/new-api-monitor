@@ -1,23 +1,17 @@
-import { formatUsd, quotaToUsd } from "@/lib/format";
+import { formatQuotaInteger, formatQuotaUsd } from "@/lib/queries/subscription-stats";
 import type { SubscriptionSummary } from "@/lib/queries/subscriptions";
 
 interface SubscriptionsSummaryProps {
   summary: SubscriptionSummary;
 }
 
-function formatQuotaCompact(quota: string): string {
-  const n = Number(quota);
-  if (!Number.isFinite(n)) return quota;
-  return n.toLocaleString("en-US");
-}
-
 export function SubscriptionsSummary({ summary }: SubscriptionsSummaryProps) {
   const cards = [
-    { label: "订阅总数", value: String(summary.totalCount), foot: "条", isQuota: false, raw: "" },
-    { label: "活跃订阅", value: String(summary.activeCount), foot: "条", isQuota: false, raw: "" },
+    { label: "当前订阅数", value: String(summary.totalCount), foot: "条", isQuota: false, raw: "" },
+    { label: "当前活跃订阅", value: String(summary.activeCount), foot: "条", isQuota: false, raw: "" },
     {
-      label: "总已消耗额度",
-      value: formatUsd(quotaToUsd(summary.totalUsedQuota)),
+      label: "所选时间范围订阅消费",
+      value: formatQuotaUsd(summary.totalUsedQuota),
       foot: "quota",
       isQuota: true,
       raw: summary.totalUsedQuota,
@@ -33,7 +27,7 @@ export function SubscriptionsSummary({ summary }: SubscriptionsSummaryProps) {
             <p className="ds-mono text-[1.05rem] font-semibold text-[var(--foreground)]">{c.value}</p>
             {c.isQuota ? (
               <p className="ds-mono text-[0.66rem] text-[var(--foreground-muted)]" title={`quota ${c.raw}`}>
-                quota {formatQuotaCompact(c.raw)}
+                quota {formatQuotaInteger(c.raw)}
               </p>
             ) : (
               <p className="text-[0.66rem] text-[var(--foreground-muted)]">{c.foot}</p>
