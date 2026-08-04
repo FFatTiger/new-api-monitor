@@ -16,8 +16,11 @@ describe("clickhouse query safety", () => {
     assert.match(SOURCE, /maxQueuedQueries/);
     assert.match(SOURCE, /CLICKHOUSE_QUERY_QUEUE_TIMEOUT/);
     assert.match(SOURCE, /wait_end_of_query:\s*1/);
-    assert.match(SOURCE, /Promise\.all\(\[summaryPromise, rankingsPromise\]\)/);
-    assert.match(SOURCE, /Promise\.all\(\[loadStability\(\), loadTrend\(\)\]\)/);
+    assert.match(SOURCE, /const summaryRows = await summaryPromise/);
+    assert.match(SOURCE, /const rankingRows = await rankingsPromise/);
+    assert.match(SOURCE, /const stabilityRows = await loadStability\(\)/);
+    assert.match(SOURCE, /const trendRows = await loadTrend\(\)/);
+    assert.doesNotMatch(SOURCE, /Promise\.all\(\[summaryPromise, rankingsPromise\]\)/);
     assert.match(SOURCE, /SELECT \* FROM \(SELECT 'token'/);
     assert.match(SOURCE, /SELECT \* FROM \(SELECT 'model' kind/);
     assert.match(SOURCE, /sum\(input_tokens\) input_sum/);

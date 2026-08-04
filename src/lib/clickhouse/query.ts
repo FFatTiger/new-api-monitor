@@ -176,8 +176,10 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
     ) SELECT * FROM stable` });
     const bucket = filters.granularity === "hour" ? "toStartOfHour(toDateTime(bucket_start, 'Asia/Shanghai'))" : "toStartOfDay(toDateTime(bucket_start, 'Asia/Shanghai'), 'Asia/Shanghai')";
     const loadTrend = () => jsonQuery<Record<string, unknown>>(client, { ...common, query: `WITH ${cte.sql} SELECT toUnixTimestamp(${bucket}) bucket_ts, sum(request_count) request_count, sum(input_tokens) input_sum, sum(output_tokens) output_sum, sum(input_tokens) + sum(output_tokens) total_sum, sum(cache_tokens) cache_sum FROM dedup GROUP BY bucket_ts ORDER BY bucket_ts` });
-    const [summaryRows, rankingRows] = await Promise.all([summaryPromise, rankingsPromise]);
-    const [stabilityRows, trendRows] = await Promise.all([loadStability(), loadTrend()]);
+    const summaryRows = await summaryPromise;
+    const rankingRows = await rankingsPromise;
+    const stabilityRows = await loadStability();
+    const trendRows = await loadTrend();
     const s = summaryRows[0] ?? {};
     const summary: SummaryMetrics = { requestCount:num(s.request_count), inputTokens:num(s.input_sum), outputTokens:num(s.output_sum), totalTokens:num(s.total_sum), cacheTokens:num(s.cache_sum), avgOutputTokensPerSec:nullableDivide(s.speed_sum,s.speed_count), activeUserCount:num(s.active_users), activeChannelCount:num(s.active_channels) };
     const stabilitySummary: StabilitySummary = { totalAttempts:num(s.attempts), successCount:num(s.successes), errorCount:num(s.errors), errorRate:num(s.attempts)>0?num(s.errors)/num(s.attempts):null, avgFirstTokenLatency:nullableDivide(s.frt_sum,s.frt_count), avgTotalResponseTime:nullableDivide(s.response_sum,s.response_count) };
