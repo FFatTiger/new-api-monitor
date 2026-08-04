@@ -28,9 +28,9 @@ describe("clickhouse query safety", () => {
     assert.doesNotMatch(SOURCE, /FROM\s+logs/i);
   });
 
-  it("deduplicates retried immutable batches without FINAL", () => {
-    assert.match(SOURCE, /GROUP BY batch_id, bucket_start, token_id, token_name, user_id, username, model_name, channel_id/);
-    assert.match(SOURCE, /argMax\(request_count, version\)/);
-    assert.doesNotMatch(SOURCE, /\bFINAL\b/);
+  it("deduplicates retried immutable batches with ordered ReplacingMergeTree FINAL", () => {
+    assert.match(SOURCE, /FROM dashboard_minute_batches FINAL/);
+    assert.doesNotMatch(SOURCE, /argMax\(request_count, version\)/);
+    assert.doesNotMatch(SOURCE, /GROUP BY batch_id, bucket_start, token_id/);
   });
 });

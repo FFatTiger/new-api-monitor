@@ -130,19 +130,16 @@ function rangeAndFilters(filters: DashboardFilters): { where: string; params: Re
 function dedupCte(filters: DashboardFilters): { sql: string; params: Record<string, unknown> } {
   const { where, params } = rangeAndFilters(filters);
   return { params, sql: `dedup AS (
-    SELECT batch_id, bucket_start, token_id, token_name, user_id, username, model_name, channel_id,
-      argMax(channel_name, version) channel_name,
-      argMax(request_count, version) request_count, argMax(input_tokens, version) input_tokens,
-      argMax(output_tokens, version) output_tokens, argMax(cache_tokens, version) cache_tokens,
-      argMax(attempt_count, version) attempt_count, argMax(success_count, version) success_count,
-      argMax(error_count, version) error_count,
-      argMax(first_token_latency_sum, version) first_token_latency_sum,
-      argMax(first_token_latency_count, version) first_token_latency_count,
-      argMax(response_time_sum, version) response_time_sum, argMax(response_time_count, version) response_time_count,
-      argMax(output_speed_sum, version) output_speed_sum, argMax(output_speed_count, version) output_speed_count,
-      argMax(first_used_at, version) first_used_at, argMax(latest_used_at, version) latest_used_at
-    FROM dashboard_minute_batches ${where}
-    GROUP BY batch_id, bucket_start, token_id, token_name, user_id, username, model_name, channel_id
+    SELECT
+      batch_id, bucket_start, token_id, token_name, user_id, username,
+      model_name, channel_id, channel_name,
+      request_count, input_tokens, output_tokens, cache_tokens,
+      attempt_count, success_count, error_count,
+      first_token_latency_sum, first_token_latency_count,
+      response_time_sum, response_time_count,
+      output_speed_sum, output_speed_count,
+      first_used_at, latest_used_at
+    FROM dashboard_minute_batches FINAL ${where}
   )` };
 }
 
