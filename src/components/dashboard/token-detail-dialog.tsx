@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { useMountTransition } from "@/hooks/useMountTransition";
 import { formatCompactNumber, formatDateTime, formatInputWithCache, formatStatus } from "@/lib/format";
 import type { TokenDetailData, TokenRankingRow } from "@/lib/queries/dashboard";
+
+const DIALOG_EXIT_MS = 260;
 
 interface TokenDetailDialogProps {
   row: TokenRankingRow | null;
@@ -15,15 +18,25 @@ interface TokenDetailDialogProps {
 export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps) {
   const searchParams = useSearchParams();
   const [detailResult, setDetailResult] = useState<{ url: string; detail: TokenDetailData | null; error: string | null } | null>(null);
+  const [lastRow, setLastRow] = useState<TokenRankingRow | null>(null);
+
+  if (row !== null && row !== lastRow) {
+    // Retain the last opened row so the dialog body stays valid while the exit
+    // transition plays after `open` flips false.
+    setLastRow(row);
+  }
+
+  const activeRow = open && row ? row : lastRow;
+  const { mounted, visible } = useMountTransition(open && activeRow !== null, DIALOG_EXIT_MS);
 
   const detailUrl = useMemo(() => {
-    if (!row) return null;
+    if (!activeRow) return null;
 
     const params = new URLSearchParams(searchParams.toString());
-    params.set("tokenId", String(row.tokenId));
-    params.set("tokenName", row.tokenName);
+    params.set("tokenId", String(activeRow.tokenId));
+    params.set("tokenName", activeRow.tokenName);
     return `/api/token-detail?${params.toString()}`;
-  }, [row, searchParams]);
+  }, [activeRow, searchParams]);
 
   useEffect(() => {
     if (!open || !detailUrl) {
@@ -44,7 +57,7 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
       });
 
     return () => controller.abort();
-  }, [detailUrl, open, row?.detail]);
+  }, [detailUrl, open, activeRow?.detail]);
   useEffect(() => {
     if (!open) {
       return;
@@ -60,31 +73,32 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, onClose]);
 
-  if (!open || !row) {
+  if (!mounted) {
     return null;
   }
 
+  const currentRow = activeRow as TokenRankingRow;
   const currentDetailResult = detailResult?.url === detailUrl ? detailResult : null;
-  const tokenDetail = currentDetailResult?.detail ?? row.detail ?? null;
+  const tokenDetail = currentDetailResult?.detail ?? currentRow.detail ?? null;
   const detailError = currentDetailResult?.error ?? null;
   const detailLoading = !tokenDetail && !detailError;
-  const averageInputTokens = row.requestCount > 0 ? row.inputTokens / row.requestCount : 0;
-  const averageOutputTokens = row.requestCount > 0 ? row.outputTokens / row.requestCount : 0;
-  const averageTotalTokens = row.requestCount > 0 ? row.totalTokens / row.requestCount : 0;
+  const averageInputTokens = currentRow.requestCount > 0 ? currentRow.inputTokens / currentRow.requestCount : 0;
+  const averageOutputTokens = currentRow.requestCount > 0 ? currentRow.outputTokens / currentRow.requestCount : 0;
+  const averageTotalTokens = currentRow.requestCount > 0 ? currentRow.totalTokens / currentRow.requestCount : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-5">
-      <div className="ds-overlay-panel absolute inset-0" onClick={onClose} />
-      <div className="ds-overlay-card relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-[26px] sm:max-h-[90vh] sm:max-w-6xl sm:rounded-[28px]">
+      <div className="ds-overlay-panel ds-dialog-backdrop absolute inset-0" data-state={visible ? "open" : "closed"} onClick={onClose} />
+      <div className="ds-overlay-card ds-dialog-card relative z-10 max-h-[92vh] w-full overflow-y-auto rounded-t-[26px] sm:max-h-[90vh] sm:max-w-6xl sm:rounded-[28px]" data-state={visible ? "open" : "closed"}>
         <div className="ds-divider px-4 py-4 sm:px-6 sm:py-5">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="ds-kicker">密钥详情</p>
               <h3 className="mt-3 break-words text-[1.18rem] font-semibold tracking-[-0.05em] text-[var(--foreground)] sm:text-[1.45rem]">
-                {row.tokenName}
+                {currentRow.tokenName}
               </h3>
               <p className="mt-2 ds-mono text-[0.74rem] uppercase tracking-[0.08em] text-[var(--foreground-faint)]">
-                编号 {row.tokenId}
+                编号 {currentRow.tokenId}
               </p>
             </div>
             <button
@@ -99,17 +113,17 @@ export function TokenDetailDialog({ row, open, onClose }: TokenDetailDialogProps
         </div>
 
         <div className="ds-dialog-grid p-4 sm:p-6 md:grid-cols-2 xl:grid-cols-3">
-          <DataCard label="用户名" value={row.username} subValue={row.displayName || "-"} />
-          <DataCard label="状态" value={formatStatus(row.status)} subValue={`最近调用 ${formatDateTime(row.latestUsedAt)}`} />
-          <DataCard label="请求数" value={row.requestCount.toLocaleString("zh-CN")} subValue="当前筛选窗口内" />
-          <DataCard label="输入令牌" value={formatInputWithCache(row.inputTokens, row.cacheTokens)} subValue="当前筛选窗口内累计" />
-          <DataCard label="输出令牌" value={formatCompactNumber(row.outputTokens)} subValue="当前筛选窗口内累计" />
-          <DataCard label="总令牌" value={formatCompactNumber(row.totalTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="用户名" value={currentRow.username} subValue={currentRow.displayName || "-"} />
+          <DataCard label="状态" value={formatStatus(currentRow.status)} subValue={`最近调用 ${formatDateTime(currentRow.latestUsedAt)}`} />
+          <DataCard label="请求数" value={currentRow.requestCount.toLocaleString("zh-CN")} subValue="当前筛选窗口内" />
+          <DataCard label="输入令牌" value={formatInputWithCache(currentRow.inputTokens, currentRow.cacheTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="输出令牌" value={formatCompactNumber(currentRow.outputTokens)} subValue="当前筛选窗口内累计" />
+          <DataCard label="总令牌" value={formatCompactNumber(currentRow.totalTokens)} subValue="当前筛选窗口内累计" />
         </div>
 
         <div className="ds-divider ds-dialog-grid px-4 py-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-5">
           <DataCard label="首次调用" value={detailLoading ? <InlineSkeleton /> : formatDateTime(tokenDetail?.firstUsedAt ?? 0)} subValue="当前筛选窗口内首次记录" />
-          <DataCard label="过期时间" value={formatDateTime(row.expiredTime)} subValue={row.expiredTime < 0 ? "未设置" : "北京时间"} />
+          <DataCard label="过期时间" value={formatDateTime(currentRow.expiredTime)} subValue={currentRow.expiredTime < 0 ? "未设置" : "北京时间"} />
           <DataCard label="平均输入 / 请求" value={formatCompactNumber(averageInputTokens)} subValue="当前筛选窗口内" />
           <DataCard label="平均输出 / 请求" value={formatCompactNumber(averageOutputTokens)} subValue="当前筛选窗口内" />
           <DataCard label="平均总令牌 / 请求" value={formatCompactNumber(averageTotalTokens)} subValue="当前筛选窗口内" />

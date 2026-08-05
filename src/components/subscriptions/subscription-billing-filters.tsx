@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 
+import { useMountTransition } from "@/hooks/useMountTransition";
 import type {
   SubscriptionBillingFilters,
   SubscriptionBillingPreset,
 } from "@/lib/queries/subscription-billing-filters";
+
+const DIALOG_EXIT_MS = 260;
 
 interface SubscriptionBillingHeaderControlsProps {
   filters: SubscriptionBillingFilters;
@@ -42,6 +45,8 @@ export function SubscriptionBillingHeaderControls({
     setCustomStartInput(filters.startInput);
     setCustomEndInput(filters.endInput);
   }, [filters.endInput, filters.preset, filters.startInput]);
+
+  const { mounted, visible } = useMountTransition(dialogOpen, DIALOG_EXIT_MS);
 
   useEffect(() => {
     // Route/search-param changes must replace draft values (including Link navigation and back/forward).
@@ -113,15 +118,16 @@ export function SubscriptionBillingHeaderControls({
         </button>
       </div>
 
-      {dialogOpen ? (
+      {mounted ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-5">
           <button
             type="button"
             aria-label="关闭订阅消费时间筛选"
-            className="ds-overlay-panel absolute inset-0"
+            className="ds-overlay-panel ds-dialog-backdrop absolute inset-0"
+            data-state={visible ? "open" : "closed"}
             onClick={closeDialog}
           />
-          <div className="ds-overlay-card relative z-10 w-full rounded-t-[24px] px-4 py-4 sm:max-w-[560px] sm:rounded-[24px] sm:px-6 sm:py-5">
+          <div className="ds-overlay-card ds-dialog-card relative z-10 w-full rounded-t-[24px] px-4 py-4 sm:max-w-[560px] sm:rounded-[24px] sm:px-6 sm:py-5" data-state={visible ? "open" : "closed"}>
             <div className="ds-divider mb-5 flex items-start justify-between gap-4 pb-4">
               <div>
                 <p className="ds-kicker">筛选</p>

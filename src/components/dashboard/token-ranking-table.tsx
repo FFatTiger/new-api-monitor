@@ -348,7 +348,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
           </button>
         </div>
 
-        <div key={`mobile-${activeDimension}`} className="space-y-3 md:hidden">
+        <div key={`mobile-${activeDimension}`} className="ds-fade-in space-y-3 md:hidden">
           {sortedRows.map((row, index) => {
             const content = (
               <>
@@ -416,7 +416,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
           })}
         </div>
 
-        <div key={`desktop-${activeDimension}`} className="hidden md:block">
+        <div key={`desktop-${activeDimension}`} className="ds-fade-in hidden md:block">
           <div className="ds-table-shell overflow-x-auto">
             <table className="min-w-[1160px] w-full border-collapse text-left text-sm text-[var(--foreground)]">
               <thead>

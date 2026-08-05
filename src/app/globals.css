@@ -458,9 +458,92 @@ input::-webkit-calendar-picker-indicator {
   }
 }
 
+/* ---- Motion: dialogs ---- */
+
+.ds-dialog-backdrop {
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+
+.ds-dialog-backdrop[data-state="open"] {
+  opacity: 1;
+}
+
+.ds-dialog-card {
+  opacity: 0;
+  transform: translateY(24px) scale(0.98);
+  transition:
+    opacity 240ms ease-out,
+    transform 240ms ease-out;
+}
+
+@media (min-width: 640px) {
+  .ds-dialog-card {
+    transform: translateY(0) scale(0.97);
+  }
+}
+
+.ds-dialog-card[data-state="open"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+/* ---- Motion: content swap ---- */
+
+.ds-fade-in {
+  animation: ds-fade-in 160ms ease-out;
+}
+
+@keyframes ds-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+/* ---- Motion: press feedback ---- */
+
+.ds-button-primary:active,
+.ds-button-secondary:active,
+.ds-icon-button:active {
+  transform: scale(0.98);
+  transition-duration: 140ms;
+}
+
+/* ---- Motion: sliding tab indicator ---- */
+
+.ds-sliding-indicator {
+  transition:
+    left 220ms ease-out,
+    width 220ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ds-skeleton {
     animation: none;
+  }
+
+  .ds-dialog-backdrop {
+    transition: opacity 200ms ease;
+  }
+
+  .ds-dialog-card {
+    transform: none;
+    transition: opacity 200ms ease;
+  }
+
+  .ds-fade-in {
+    animation: none;
+  }
+
+  .ds-sliding-indicator {
+    transition: none;
+  }
+
+  .ds-button-primary:active,
+  .ds-button-secondary:active,
+  .ds-icon-button:active {
+    transform: none;
   }
 }
 

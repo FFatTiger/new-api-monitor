@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 
 import { announceDashboardRefresh } from "@/components/dashboard/dashboard-refresh-boundary";
+import { useMountTransition } from "@/hooks/useMountTransition";
 import type { DashboardFilters, FilterOption, FilterPreset } from "@/lib/queries/dashboard";
+
+const DIALOG_EXIT_MS = 260;
 
 interface DashboardHeaderControlsProps {
   filters: DashboardFilters;
@@ -45,6 +48,8 @@ export function DashboardHeaderControls({
     setCustomStartInput(filters.startInput);
     setCustomEndInput(filters.endInput);
   }, [filters.endInput, filters.preset, filters.startInput]);
+
+  const { mounted, visible } = useMountTransition(dialogOpen, DIALOG_EXIT_MS);
 
   useEffect(() => {
     if (!dialogOpen) {
@@ -110,10 +115,10 @@ export function DashboardHeaderControls({
         </button>
       </div>
 
-      {dialogOpen ? (
+      {mounted ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-5">
-          <button type="button" aria-label="关闭高级筛选" className="ds-overlay-panel absolute inset-0" onClick={closeDialog} />
-          <div className="ds-overlay-card relative z-10 w-full rounded-t-[24px] px-4 py-4 sm:max-w-[760px] sm:rounded-[24px] sm:px-6 sm:py-5">
+          <button type="button" aria-label="关闭高级筛选" className="ds-overlay-panel ds-dialog-backdrop absolute inset-0" data-state={visible ? "open" : "closed"} onClick={closeDialog} />
+          <div className="ds-overlay-card ds-dialog-card relative z-10 w-full rounded-t-[24px] px-4 py-4 sm:max-w-[760px] sm:rounded-[24px] sm:px-6 sm:py-5" data-state={visible ? "open" : "closed"}>
             <div className="ds-divider mb-5 flex items-start justify-between gap-4 pb-4">
               <div>
                 <p className="ds-kicker">筛选</p>
