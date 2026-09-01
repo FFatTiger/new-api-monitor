@@ -6,6 +6,7 @@ import { AppHeader } from "@/components/navigation/app-header";
 import { ProviderCard } from "@/components/quota/provider-card";
 import { QuotaPredictionPanel } from "@/components/quota/quota-prediction-panel";
 import { QuotaIcons } from "@/components/quota/quota-icons";
+import { QuotaTimeline } from "@/components/quota/quota-timeline";
 import { ProviderTabs } from "@/components/quota/provider-tabs";
 import { useQuota } from "@/hooks/useQuota";
 import { normalizeFraction } from "@/lib/quota/normalize";
@@ -390,6 +391,8 @@ export function QuotaPageClient() {
             );
           })}
         </div>
+
+        <QuotaTimeline entries={sortedFiles} quotas={quotas} providerFor={getProviderType} />
       </section>
     </main>
   );
