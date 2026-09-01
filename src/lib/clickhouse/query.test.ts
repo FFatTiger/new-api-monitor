@@ -21,8 +21,9 @@ describe("clickhouse query safety", () => {
     assert.match(SOURCE, /const stabilityRows = await loadStability\(\)/);
     assert.match(SOURCE, /const trendRows = await loadTrend\(\)/);
     assert.doesNotMatch(SOURCE, /Promise\.all\(\[summaryPromise, rankingsPromise\]\)/);
-    assert.match(SOURCE, /SELECT \* FROM \(SELECT 'token'/);
-    assert.match(SOURCE, /SELECT \* FROM \(SELECT 'model' kind/);
+    assert.match(SOURCE, /const rankingUnionSql = Object\.values\(rankingKindSelects\)/);
+    assert.match(SOURCE, /SELECT 'token' kind, toString\(token_id\) id/);
+    assert.match(SOURCE, /SELECT 'model' kind, '0' id/);
     assert.match(SOURCE, /sum\(input_tokens\) input_sum/);
     assert.doesNotMatch(SOURCE, /sum\(input_tokens\) input_tokens/);
     assert.doesNotMatch(SOURCE, /FROM\s+logs/i);

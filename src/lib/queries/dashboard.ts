@@ -70,6 +70,27 @@ export interface TokenDetailData {
   channels: TokenDetailChannelRow[];
 }
 
+export interface UserDetailTokenRow {
+  tokenId: number;
+  tokenName: string;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheTokens: number;
+  latestUsedAt: number;
+}
+
+export interface UserDetailData {
+  firstUsedAt: number;
+  activeModelCount: number;
+  activeChannelCount: number;
+  activeTokenCount: number;
+  models: TokenDetailModelRow[];
+  channels: TokenDetailChannelRow[];
+  tokens: UserDetailTokenRow[];
+}
+
 export interface TokenRankingRow {
   tokenId: number;
   tokenName: string;

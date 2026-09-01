@@ -1,14 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import {
   TokenDetailDialog,
   useTokenDetailDialog,
 } from "@/components/dashboard/token-detail-dialog";
+import {
+  UserDetailDialog,
+  useUserDetailDialog,
+} from "@/components/dashboard/user-detail-dialog";
 import { formatCompactNumber, formatDateTime, formatOutputTokensPerSec, formatPercent, formatStatus, getCacheRatio } from "@/lib/format";
 import type {
   ChannelRankingRow,
+  FilterOption,
   ModelRankingRow,
   TokenRankingRow,
   UserRankingRow,
@@ -19,6 +25,7 @@ interface TokenRankingTableProps {
   userRows: UserRankingRow[];
   modelRows: ModelRankingRow[];
   channelRows: ChannelRankingRow[];
+  modelOptions: FilterOption[];
 }
 
 type DimensionKey = "token" | "user" | "model" | "channel";
@@ -140,15 +147,91 @@ function sortRows(rows: RankingViewRow[], sortKey: SortKey, sortDirection: SortD
     .map((item) => item.row);
 }
 
-export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows }: TokenRankingTableProps) {
+export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows, modelOptions }: TokenRankingTableProps) {
   const { selectedRow, openRow, closeRow, isOpen } = useTokenDetailDialog();
+  const { selectedRow: selectedUserRow, openRow: openUserRow, closeRow: closeUserRow, isOpen: isUserOpen } = useUserDetailDialog();
+  const searchParams = useSearchParams();
   const [activeDimension, setActiveDimension] = useState<DimensionKey>("token");
   const [sortKey, setSortKey] = useState<SortKey>(defaultSortState.token.key);
   const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortState.token.direction);
+  const [rankingModel, setRankingModel] = useState("");
+  const [modelRankings, setModelRankings] = useState<{
+    model: string;
+    tokenRows: TokenRankingRow[] | null;
+    userRows: UserRankingRow[] | null;
+  } | null>(null);
+  const [modelRankingsError, setModelRankingsError] = useState<string | null>(null);
+
+  const modelRankingKind = activeDimension === "token" || activeDimension === "user" ? activeDimension : null;
+  const modelRankingsLoaded =
+    rankingModel !== "" &&
+    modelRankings?.model === rankingModel &&
+    modelRankingKind !== null &&
+    (modelRankingKind === "token" ? modelRankings.tokenRows : modelRankings.userRows) != null;
+
+  useEffect(() => {
+    if (rankingModel === "" || modelRankingKind === null || modelRankingsLoaded) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("kind", modelRankingKind);
+    params.set("model", rankingModel);
+
+    fetch(`/api/ranking?${params.toString()}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("模型筛选数据加载失败");
+        return (await response.json()) as { tokenRankings?: TokenRankingRow[]; userRankings?: UserRankingRow[] };
+      })
+      .then((payload) => {
+        setModelRankingsError(null);
+        setModelRankings((current) => ({
+          model: rankingModel,
+          tokenRows:
+            modelRankingKind === "token"
+              ? payload.tokenRankings ?? []
+              : current?.model === rankingModel
+                ? current.tokenRows
+                : null,
+          userRows:
+            modelRankingKind === "user"
+              ? payload.userRankings ?? []
+              : current?.model === rankingModel
+                ? current.userRows
+                : null,
+        }));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setModelRankingsError(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => controller.abort();
+  }, [modelRankingKind, modelRankingsLoaded, rankingModel, searchParams]);
+
+  const effectiveTokenRows = useMemo(
+    () =>
+      rankingModel === ""
+        ? tokenRows
+        : modelRankings?.model === rankingModel
+          ? modelRankings.tokenRows ?? []
+          : [],
+    [modelRankings, rankingModel, tokenRows],
+  );
+  const effectiveUserRows = useMemo(
+    () =>
+      rankingModel === ""
+        ? userRows
+        : modelRankings?.model === rankingModel
+          ? modelRankings.userRows ?? []
+          : [],
+    [modelRankings, rankingModel, userRows],
+  );
 
   const tokenViewRows = useMemo<RankingViewRow[]>(
     () =>
-      tokenRows.map((row) => ({
+      effectiveTokenRows.map((row) => ({
         key: `${row.tokenId}-${row.tokenName}`,
         name: row.tokenName,
         info: row.username,
@@ -161,12 +244,12 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         latestUsedAt: row.latestUsedAt,
         onSelect: () => openRow(row),
       })),
-    [openRow, tokenRows],
+    [openRow, effectiveTokenRows],
   );
 
   const userViewRows = useMemo<RankingViewRow[]>(
     () =>
-      userRows.map((row) => ({
+      effectiveUserRows.map((row) => ({
         key: String(row.userId),
         name: row.username,
         info: "",
@@ -177,8 +260,9 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
         cacheTokens: row.cacheTokens,
         outputTokensPerSec: row.outputTokensPerSec,
         latestUsedAt: row.latestUsedAt,
+        onSelect: () => openUserRow(row),
       })),
-    [userRows],
+    [openUserRow, effectiveUserRows],
   );
 
   const modelViewRows = useMemo<RankingViewRow[]>(
@@ -273,33 +357,68 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
     setSortDirection(defaultSortState[activeDimension].direction);
   }
 
+  function handleRankingModelChange(nextModel: string) {
+    setRankingModel(nextModel);
+    setModelRankingsError(null);
+  }
+
   const activeSortLabels = sortLabelsByDimension[activeDimension];
+  const modelFilterApplied = rankingModel !== "" && modelRankingKind !== null;
+  const modelFilterPending = modelFilterApplied && !modelRankingsLoaded;
+  const listPlaceholder = modelFilterPending
+    ? modelRankingsError
+      ? <p className="py-10 text-center text-sm text-red-500">{modelRankingsError}</p>
+      : <RankingSkeletonRows />
+    : modelFilterApplied && sortedRows.length === 0
+      ? <p className="py-10 text-center text-sm text-[var(--foreground-soft)]">当前模型筛选下没有匹配记录</p>
+      : null;
 
   return (
     <>
       <section className="ds-panel overflow-hidden px-4 py-4 sm:px-5 sm:py-5">
         <div className="ds-divider mb-4 flex flex-col gap-4 pb-4">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] leading-none tracking-[-0.05em] sm:text-[1.18rem]">
-            {dimensionTabs.map((tab, index) => {
-              const isActive = tab.key === activeDimension;
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[1rem] leading-none tracking-[-0.05em] sm:text-[1.18rem]">
+              {dimensionTabs.map((tab, index) => {
+                const isActive = tab.key === activeDimension;
 
-              return (
-                <div key={tab.key} className="flex items-center gap-x-2 gap-y-1">
-                  {index > 0 ? <span className="text-[var(--foreground-faint)]">/</span> : null}
-                  <button
-                    type="button"
-                    onClick={() => handleDimensionChange(tab.key)}
-                    className={`cursor-pointer transition ${
-                      isActive
-                        ? "ds-tab-active-text text-[var(--foreground)]"
-                        : "font-medium text-[var(--foreground-faint)] hover:text-[var(--foreground-soft)]"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                </div>
-              );
-            })}
+                return (
+                  <div key={tab.key} className="flex items-center gap-x-2 gap-y-1">
+                    {index > 0 ? <span className="text-[var(--foreground-faint)]">/</span> : null}
+                    <button
+                      type="button"
+                      onClick={() => handleDimensionChange(tab.key)}
+                      className={`cursor-pointer transition ${
+                        isActive
+                          ? "ds-tab-active-text text-[var(--foreground)]"
+                          : "font-medium text-[var(--foreground-faint)] hover:text-[var(--foreground-soft)]"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {modelRankingKind ? (
+              <label className="flex items-center gap-2">
+                <span className="ds-kicker text-[0.58rem] text-[var(--foreground-faint)]">模型</span>
+                <select
+                  value={rankingModel}
+                  onChange={(event) => handleRankingModelChange(event.target.value)}
+                  className="ds-compact-control h-9 min-w-[150px] appearance-none pr-8 text-[0.8rem]"
+                  aria-label="模型筛选"
+                >
+                  <option value="">全部模型</option>
+                  {modelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
 
           {leader ? (
@@ -348,6 +467,9 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
           </button>
         </div>
 
+        {listPlaceholder ? <div key={`placeholder-${activeDimension}`} className="ds-fade-in">{listPlaceholder}</div> : null}
+
+        <div className={listPlaceholder ? "hidden" : ""}>
         <div key={`mobile-${activeDimension}`} className="ds-fade-in space-y-3 md:hidden">
           {sortedRows.map((row, index) => {
             const content = (
@@ -504,10 +626,26 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows 
             </table>
           </div>
         </div>
+        </div>
       </section>
 
-      <TokenDetailDialog row={selectedRow} open={isOpen} onClose={closeRow} />
+      <TokenDetailDialog row={selectedRow} open={isOpen} onClose={closeRow} modelOverride={rankingModel} />
+      <UserDetailDialog row={selectedUserRow} open={isUserOpen} onClose={closeUserRow} modelOverride={rankingModel} />
     </>
+  );
+}
+
+function RankingSkeletonRows() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 5 }, (_, index) => (
+        <div key={index} className="ds-card-muted px-4 py-4">
+          <div className="ds-skeleton h-4 w-40 rounded-full" />
+          <div className="mt-3 ds-skeleton h-3 w-64 rounded-full" />
+          <div className="mt-3 ds-skeleton h-3 w-48 rounded-full" />
+        </div>
+      ))}
+    </div>
   );
 }
 

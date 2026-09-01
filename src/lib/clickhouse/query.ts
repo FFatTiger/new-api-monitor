@@ -4,7 +4,8 @@ import { parseDashboardRouteFilters } from "@/lib/dashboard/dashboard-routing";
 import type {
   ChannelRankingRow, ChannelStabilityRow, DashboardFilters, FilterOption,
   ModelRankingRow, ModelStabilityRow, SearchParamsInput, StabilitySummary,
-  SummaryMetrics, TokenDetailData, TokenRankingRow, TrendPoint, UserRankingRow,
+  SummaryMetrics, TokenDetailData, TokenRankingRow, TrendPoint, UserDetailData,
+  UserRankingRow,
 } from "@/lib/queries/dashboard";
 import type { DashboardRollupPacket } from "@/lib/dashboard/rollup-query";
 
@@ -143,6 +144,21 @@ function dedupCte(filters: DashboardFilters): { sql: string; params: Record<stri
   )` };
 }
 
+const rankingKindSelects = {
+  token: `SELECT 'token' kind, toString(token_id) id, token_name name, max(username) secondary, sum(request_count) requests, sum(input_tokens) input,
+    sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY token_id, token_name ORDER BY total DESC LIMIT 12`,
+  user: `SELECT 'user' kind, toString(user_id) id, username name, '' secondary, sum(request_count) requests, sum(input_tokens) input, sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY user_id, username ORDER BY total DESC LIMIT 12`,
+  model: `SELECT 'model' kind, '0' id, model_name name, '' secondary, sum(request_count) requests, sum(input_tokens) input, sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY model_name ORDER BY total DESC LIMIT 12`,
+  channel: `SELECT 'channel' kind, toString(channel_id) id, if(max(channel_name)='', concat('渠道 ',toString(channel_id)),max(channel_name)) name, '' secondary, sum(request_count) requests, sum(input_tokens) input, sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY channel_id ORDER BY total DESC LIMIT 12`,
+} as const;
+
+function mapTokenRankingRow(r: Record<string, unknown>): TokenRankingRow {
+  return { tokenId:num(r.id),tokenName:String(r.name??""),username:String(r.secondary??""),displayName:"",status:-1,expiredTime:0,requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) };
+}
+function mapUserRankingRow(r: Record<string, unknown>): UserRankingRow {
+  return { userId:num(r.id),username:String(r.name??""),displayName:"",status:-1,requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) };
+}
+
 export async function getClickHouseDashboardPacket(filters: DashboardFilters): Promise<ClickHousePacketResult> {
   const config = getClickHouseConfig();
   if (!config.readsEnabled) return { kind: "error", safeMessage: SAFE_DISABLED };
@@ -160,12 +176,9 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
       sum(attempt_count) attempts, sum(success_count) successes, sum(error_count) errors,
       sum(first_token_latency_sum) frt_sum, sum(first_token_latency_count) frt_count,
       sum(response_time_sum) response_sum, sum(response_time_count) response_count FROM dedup` });
+    const rankingUnionSql = Object.values(rankingKindSelects).map((select) => `SELECT * FROM (${select})`).join(" UNION ALL ");
     const rankingsPromise = jsonQuery<Record<string, unknown>>(client, { ...common, query: `WITH ${cte.sql}, ranked AS (
-      SELECT * FROM (SELECT 'token' kind, toString(token_id) id, token_name name, max(username) secondary, sum(request_count) requests, sum(input_tokens) input,
-        sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY token_id, token_name ORDER BY total DESC LIMIT 12)
-      UNION ALL SELECT * FROM (SELECT 'user' kind, toString(user_id) id, username name, '' secondary, sum(request_count) requests, sum(input_tokens) input, sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY user_id, username ORDER BY total DESC LIMIT 12)
-      UNION ALL SELECT * FROM (SELECT 'model' kind, '0' id, model_name name, '' secondary, sum(request_count) requests, sum(input_tokens) input, sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY model_name ORDER BY total DESC LIMIT 12)
-      UNION ALL SELECT * FROM (SELECT 'channel' kind, toString(channel_id) id, if(max(channel_name)='', concat('渠道 ',toString(channel_id)),max(channel_name)) name, '' secondary, sum(request_count) requests, sum(input_tokens) input, sum(output_tokens) output, sum(input_tokens+output_tokens) total, sum(cache_tokens) cache, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY channel_id ORDER BY total DESC LIMIT 12)
+      ${rankingUnionSql}
     ) SELECT * FROM ranked` });
     const loadStability = () => jsonQuery<Record<string, unknown>>(client, { ...common, query: `WITH ${cte.sql}, stable AS (
       SELECT * FROM (SELECT 'model' kind, '0' id, model_name name, sum(attempt_count) attempts, sum(success_count) successes, sum(error_count) errors, sum(first_token_latency_sum) frt_sum, sum(first_token_latency_count) frt_count, sum(response_time_sum) response_sum, sum(response_time_count) response_count, sum(output_speed_sum) speed_sum, sum(output_speed_count) speed_count, max(latest_used_at) latest FROM dedup GROUP BY model_name HAVING attempts > 0 ORDER BY errors/attempts DESC LIMIT 12)
@@ -181,8 +194,8 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
     const summary: SummaryMetrics = { requestCount:num(s.request_count), inputTokens:num(s.input_sum), outputTokens:num(s.output_sum), totalTokens:num(s.total_sum), cacheTokens:num(s.cache_sum), avgOutputTokensPerSec:nullableDivide(s.speed_sum,s.speed_count), activeUserCount:num(s.active_users), activeChannelCount:num(s.active_channels) };
     const stabilitySummary: StabilitySummary = { totalAttempts:num(s.attempts), successCount:num(s.successes), errorCount:num(s.errors), errorRate:num(s.attempts)>0?num(s.errors)/num(s.attempts):null, avgFirstTokenLatency:nullableDivide(s.frt_sum,s.frt_count), avgTotalResponseTime:nullableDivide(s.response_sum,s.response_count) };
     const rank = (kind:string)=>rankingRows.filter(r=>r.kind===kind);
-    const tokenRankings: TokenRankingRow[] = rank("token").map(r=>({ tokenId:num(r.id),tokenName:String(r.name??""),username:String(r.secondary??""),displayName:"",status:-1,expiredTime:0,requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) }));
-    const userRankings: UserRankingRow[] = rank("user").map(r=>({ userId:num(r.id),username:String(r.name??""),displayName:"",status:-1,requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) }));
+    const tokenRankings: TokenRankingRow[] = rank("token").map(mapTokenRankingRow);
+    const userRankings: UserRankingRow[] = rank("user").map(mapUserRankingRow);
     const modelRankings: ModelRankingRow[] = rank("model").map(r=>({ modelName:String(r.name??""),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) }));
     const channelRankings: ChannelRankingRow[] = rank("channel").map(r=>({ channelId:num(r.id),channelName:String(r.name??""),type:-1,status:-1,requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),outputTokensPerSec:nullableDivide(r.speed_sum,r.speed_count),latestUsedAt:num(r.latest) }));
     const stable = (kind:string)=>stabilityRows.filter(r=>r.kind===kind);
@@ -197,6 +210,17 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
   }
 }
 
+export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "token"): Promise<TokenRankingRow[]>;
+export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "user"): Promise<UserRankingRow[]>;
+export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "token" | "user"): Promise<TokenRankingRow[] | UserRankingRow[]> {
+  const cte = dedupCte(filters);
+  const rows = await jsonQuery<Record<string, unknown>>(getClickHouseClient(), {
+    query_params: cte.params,
+    query: `WITH ${cte.sql} SELECT * FROM (${rankingKindSelects[kind]})`,
+  });
+  return kind === "token" ? rows.map(mapTokenRankingRow) : rows.map(mapUserRankingRow);
+}
+
 export async function getClickHouseTokenDetail(filters: DashboardFilters, tokenId:number, tokenName:string):Promise<TokenDetailData> {
   const cte=dedupCte({...filters,token:""});
   const params={...cte.params,tokenId,tokenName};
@@ -207,4 +231,17 @@ export async function getClickHouseTokenDetail(filters: DashboardFilters, tokenI
   ) SELECT * FROM details`});
   const s=rows.find(r=>r.kind==="summary")??{};
   return {firstUsedAt:num(s.first_used),activeModelCount:num(s.models),activeChannelCount:num(s.channels),models:rows.filter(r=>r.kind==="model").map(r=>({modelName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)})),channels:rows.filter(r=>r.kind==="channel").map(r=>({channelId:num(r.id),channelName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)}))};
+}
+
+export async function getClickHouseUserDetail(filters: DashboardFilters, userId:number, username:string):Promise<UserDetailData> {
+  const cte=dedupCte({...filters,username:""});
+  const params={...cte.params,userId,username};
+  const rows=await jsonQuery<Record<string,unknown>>(getClickHouseClient(),{query_params:params,query:`WITH ${cte.sql}, selected AS (SELECT * FROM dedup WHERE user_id={userId:UInt64} AND username={username:String}), details AS (
+    SELECT 'summary' kind, '' name, '0' id, min(first_used_at) first_used, uniqExact(model_name) models, uniqExactIf(channel_id,channel_id!=0) channels, uniqExactIf((token_id, token_name), NOT (token_id=0 AND token_name='')) tokens, 0 requests,0 input,0 output,0 total,0 cache,0 latest FROM selected
+    UNION ALL SELECT * FROM (SELECT 'model' kind, model_name name, '0' id, 0 first_used,0 models,0 channels,0 tokens,sum(request_count) requests,sum(input_tokens) input,sum(output_tokens) output,sum(input_tokens+output_tokens) total,sum(cache_tokens) cache,max(latest_used_at) latest FROM selected GROUP BY model_name ORDER BY total DESC LIMIT 6)
+    UNION ALL SELECT * FROM (SELECT 'channel' kind, if(max(channel_name)='',concat('渠道 ',toString(channel_id)),max(channel_name)) name,toString(channel_id) id,0 first_used,0 models,0 channels,0 tokens,sum(request_count) requests,sum(input_tokens) input,sum(output_tokens) output,sum(input_tokens+output_tokens) total,sum(cache_tokens) cache,max(latest_used_at) latest FROM selected WHERE channel_id!=0 GROUP BY channel_id ORDER BY total DESC LIMIT 6)
+    UNION ALL SELECT * FROM (SELECT 'token' kind, token_name name, toString(token_id) id, 0 first_used,0 models,0 channels,0 tokens,sum(request_count) requests,sum(input_tokens) input,sum(output_tokens) output,sum(input_tokens+output_tokens) total,sum(cache_tokens) cache,max(latest_used_at) latest FROM selected GROUP BY token_id, token_name ORDER BY total DESC LIMIT 6)
+  ) SELECT * FROM details`});
+  const s=rows.find(r=>r.kind==="summary")??{};
+  return {firstUsedAt:num(s.first_used),activeModelCount:num(s.models),activeChannelCount:num(s.channels),activeTokenCount:num(s.tokens),models:rows.filter(r=>r.kind==="model").map(r=>({modelName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)})),channels:rows.filter(r=>r.kind==="channel").map(r=>({channelId:num(r.id),channelName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)})),tokens:rows.filter(r=>r.kind==="token").map(r=>({tokenId:num(r.id),tokenName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)}))};
 }
