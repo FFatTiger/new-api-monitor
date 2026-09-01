@@ -41,7 +41,7 @@ export function UserDetailDialog({ row, open, onClose, modelOverride = "" }: Use
     const params = new URLSearchParams(searchParams.toString());
     params.set("userId", String(activeRow.userId));
     params.set("username", activeRow.username);
-    if (modelOverride) params.set("model", modelOverride);
+    if (modelOverride) params.set("modelFilter", modelOverride);
     return `/api/user-detail?${params.toString()}`;
   }, [activeRow, modelOverride, searchParams]);
 

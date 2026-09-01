@@ -24,14 +24,15 @@ export async function GET(request: NextRequest) {
     const value = request.nextUrl.searchParams.get(key);
     if (value !== null) searchParams[key] = value;
   }
+  const modelNeedle = (request.nextUrl.searchParams.get("modelFilter") || "").trim();
   try {
     const filters = await resolveClickHouseFilters(searchParams);
     if (!filters) throw new Error("ClickHouse data is not ready");
     if (kind === "token") {
-      const tokenRankings = await getClickHouseRankingRows(filters, "token");
+      const tokenRankings = await getClickHouseRankingRows(filters, "token", modelNeedle || undefined);
       return NextResponse.json({ tokenRankings }, { headers });
     }
-    const userRankings = await getClickHouseRankingRows(filters, "user");
+    const userRankings = await getClickHouseRankingRows(filters, "user", modelNeedle || undefined);
     return NextResponse.json({ userRankings }, { headers });
   } catch (error) {
     console.error("[clickhouse-query] ranking failed", error);

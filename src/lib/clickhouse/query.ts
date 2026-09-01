@@ -116,20 +116,24 @@ export async function getClickHouseShellData(searchParams: SearchParamsInput): P
   }
 }
 
-function rangeAndFilters(filters: DashboardFilters): { where: string; params: Record<string, unknown> } {
+function rangeAndFilters(filters: DashboardFilters, modelNeedle?: string): { where: string; params: Record<string, unknown> } {
   const clauses: string[] = [];
   const params: Record<string, unknown> = {};
   if (filters.startTimestamp !== null) { clauses.push("bucket_start >= {start:UInt64}"); params.start = Math.floor(filters.startTimestamp / 60) * 60; }
   if (filters.endTimestamp !== null) { clauses.push("bucket_start <= {end:UInt64}"); params.end = Math.floor(filters.endTimestamp / 60) * 60; }
   if (filters.token) { clauses.push("positionCaseInsensitiveUTF8(token_name, {token:String}) > 0"); params.token = filters.token; }
   if (filters.username) { clauses.push("username = {username:String}"); params.username = filters.username; }
-  if (filters.model) { clauses.push("model_name = {model:String}"); params.model = filters.model; }
+  if (modelNeedle) {
+    // Ranking-scoped fuzzy filter: substring match so "gpt-" covers gpt-4o / gpt-4o-mini / ...
+    clauses.push("positionCaseInsensitiveUTF8(model_name, {modelNeedle:String}) > 0");
+    params.modelNeedle = modelNeedle;
+  } else if (filters.model) { clauses.push("model_name = {model:String}"); params.model = filters.model; }
   if (filters.channelId) { clauses.push("channel_id = {channel:UInt64}"); params.channel = filters.channelId; }
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
 }
 
-function dedupCte(filters: DashboardFilters): { sql: string; params: Record<string, unknown> } {
-  const { where, params } = rangeAndFilters(filters);
+function dedupCte(filters: DashboardFilters, modelNeedle?: string): { sql: string; params: Record<string, unknown> } {
+  const { where, params } = rangeAndFilters(filters, modelNeedle);
   return { params, sql: `dedup AS (
     SELECT
       batch_id, bucket_start, token_id, token_name, user_id, username,
@@ -210,10 +214,10 @@ export async function getClickHouseDashboardPacket(filters: DashboardFilters): P
   }
 }
 
-export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "token"): Promise<TokenRankingRow[]>;
-export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "user"): Promise<UserRankingRow[]>;
-export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "token" | "user"): Promise<TokenRankingRow[] | UserRankingRow[]> {
-  const cte = dedupCte(filters);
+export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "token", modelNeedle?: string): Promise<TokenRankingRow[]>;
+export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "user", modelNeedle?: string): Promise<UserRankingRow[]>;
+export async function getClickHouseRankingRows(filters: DashboardFilters, kind: "token" | "user", modelNeedle?: string): Promise<TokenRankingRow[] | UserRankingRow[]> {
+  const cte = dedupCte(filters, modelNeedle);
   const rows = await jsonQuery<Record<string, unknown>>(getClickHouseClient(), {
     query_params: cte.params,
     query: `WITH ${cte.sql} SELECT * FROM (${rankingKindSelects[kind]})`,
@@ -221,8 +225,8 @@ export async function getClickHouseRankingRows(filters: DashboardFilters, kind: 
   return kind === "token" ? rows.map(mapTokenRankingRow) : rows.map(mapUserRankingRow);
 }
 
-export async function getClickHouseTokenDetail(filters: DashboardFilters, tokenId:number, tokenName:string):Promise<TokenDetailData> {
-  const cte=dedupCte({...filters,token:""});
+export async function getClickHouseTokenDetail(filters: DashboardFilters, tokenId:number, tokenName:string, modelNeedle?: string):Promise<TokenDetailData> {
+  const cte=dedupCte({...filters,token:""}, modelNeedle);
   const params={...cte.params,tokenId,tokenName};
   const rows=await jsonQuery<Record<string,unknown>>(getClickHouseClient(),{query_params:params,query:`WITH ${cte.sql}, selected AS (SELECT * FROM dedup WHERE token_id={tokenId:UInt64} AND token_name={tokenName:String}), details AS (
     SELECT 'summary' kind, '' name, '0' id, min(first_used_at) first_used, uniqExact(model_name) models, uniqExactIf(channel_id,channel_id!=0) channels, 0 requests,0 input,0 output,0 total,0 cache,0 latest FROM selected
@@ -233,8 +237,8 @@ export async function getClickHouseTokenDetail(filters: DashboardFilters, tokenI
   return {firstUsedAt:num(s.first_used),activeModelCount:num(s.models),activeChannelCount:num(s.channels),models:rows.filter(r=>r.kind==="model").map(r=>({modelName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)})),channels:rows.filter(r=>r.kind==="channel").map(r=>({channelId:num(r.id),channelName:String(r.name),requestCount:num(r.requests),inputTokens:num(r.input),outputTokens:num(r.output),totalTokens:num(r.total),cacheTokens:num(r.cache),latestUsedAt:num(r.latest)}))};
 }
 
-export async function getClickHouseUserDetail(filters: DashboardFilters, userId:number, username:string):Promise<UserDetailData> {
-  const cte=dedupCte({...filters,username:""});
+export async function getClickHouseUserDetail(filters: DashboardFilters, userId:number, username:string, modelNeedle?: string):Promise<UserDetailData> {
+  const cte=dedupCte({...filters,username:""}, modelNeedle);
   const params={...cte.params,userId,username};
   const rows=await jsonQuery<Record<string,unknown>>(getClickHouseClient(),{query_params:params,query:`WITH ${cte.sql}, selected AS (SELECT * FROM dedup WHERE user_id={userId:UInt64} AND username={username:String}), details AS (
     SELECT 'summary' kind, '' name, '0' id, min(first_used_at) first_used, uniqExact(model_name) models, uniqExactIf(channel_id,channel_id!=0) channels, uniqExactIf((token_id, token_name), NOT (token_id=0 AND token_name='')) tokens, 0 requests,0 input,0 output,0 total,0 cache,0 latest FROM selected

@@ -10,6 +10,7 @@ describe("clickhouse query safety", () => {
     assert.match(SOURCE, /positionCaseInsensitiveUTF8\(token_name, \{token:String\}\)/);
     assert.match(SOURCE, /\{username:String\}/);
     assert.match(SOURCE, /\{model:String\}/);
+    assert.match(SOURCE, /positionCaseInsensitiveUTF8\(model_name, \{modelNeedle:String\}\) > 0/);
     assert.match(SOURCE, /\{channel:UInt64\}/);
     assert.match(SOURCE, /query_params/);
     assert.match(SOURCE, /maxConcurrentQueries/);

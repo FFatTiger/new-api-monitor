@@ -154,6 +154,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows,
   const [activeDimension, setActiveDimension] = useState<DimensionKey>("token");
   const [sortKey, setSortKey] = useState<SortKey>(defaultSortState.token.key);
   const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortState.token.direction);
+  const [rankingModelInput, setRankingModelInput] = useState("");
   const [rankingModel, setRankingModel] = useState("");
   const [modelRankings, setModelRankings] = useState<{
     model: string;
@@ -161,6 +162,16 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows,
     userRows: UserRankingRow[] | null;
   } | null>(null);
   const [modelRankingsError, setModelRankingsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const trimmed = rankingModelInput.trim();
+    if (trimmed === rankingModel) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setRankingModel(trimmed), 400);
+    return () => window.clearTimeout(timer);
+  }, [rankingModel, rankingModelInput]);
 
   const modelRankingKind = activeDimension === "token" || activeDimension === "user" ? activeDimension : null;
   const modelRankingsLoaded =
@@ -177,7 +188,7 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows,
     const controller = new AbortController();
     const params = new URLSearchParams(searchParams.toString());
     params.set("kind", modelRankingKind);
-    params.set("model", rankingModel);
+    params.set("modelFilter", rankingModel);
 
     fetch(`/api/ranking?${params.toString()}`, { signal: controller.signal })
       .then(async (response) => {
@@ -357,8 +368,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows,
     setSortDirection(defaultSortState[activeDimension].direction);
   }
 
-  function handleRankingModelChange(nextModel: string) {
-    setRankingModel(nextModel);
+  function handleRankingModelInputChange(nextValue: string) {
+    setRankingModelInput(nextValue);
     setModelRankingsError(null);
   }
 
@@ -404,19 +415,22 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows,
             {modelRankingKind ? (
               <label className="flex items-center gap-2">
                 <span className="ds-kicker text-[0.58rem] text-[var(--foreground-faint)]">模型</span>
-                <select
-                  value={rankingModel}
-                  onChange={(event) => handleRankingModelChange(event.target.value)}
-                  className="ds-compact-control h-9 min-w-[150px] appearance-none pr-8 text-[0.8rem]"
-                  aria-label="模型筛选"
-                >
-                  <option value="">全部模型</option>
+                <input
+                  type="text"
+                  value={rankingModelInput}
+                  onChange={(event) => handleRankingModelInputChange(event.target.value)}
+                  list="ranking-model-filter-options"
+                  placeholder="输入过滤，如 gpt-"
+                  aria-label="模型过滤"
+                  className="ds-input h-9 w-44 px-3 text-[0.8rem] text-[var(--foreground)] placeholder:text-[var(--foreground-faint)] sm:w-52"
+                />
+                <datalist id="ranking-model-filter-options">
                   {modelOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
-                </select>
+                </datalist>
               </label>
             ) : null}
           </div>

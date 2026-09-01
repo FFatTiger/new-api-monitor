@@ -41,7 +41,7 @@ export function TokenDetailDialog({ row, open, onClose, modelOverride = "" }: To
     const params = new URLSearchParams(searchParams.toString());
     params.set("tokenId", String(activeRow.tokenId));
     params.set("tokenName", activeRow.tokenName);
-    if (modelOverride) params.set("model", modelOverride);
+    if (modelOverride) params.set("modelFilter", modelOverride);
     return `/api/token-detail?${params.toString()}`;
   }, [activeRow, modelOverride, searchParams]);
 

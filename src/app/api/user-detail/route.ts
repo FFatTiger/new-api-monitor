@@ -19,14 +19,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "ClickHouse 统计未启用。" }, { status: 503, headers });
   }
   const searchParams: SearchParamsInput = {};
-  for (const key of ["preset", "token", "username", "model", "channelId", "start", "end"]) {
+  for (const key of ["preset", "token", "username", "model", "modelFilter", "channelId", "start", "end"]) {
     const value = request.nextUrl.searchParams.get(key);
     if (value !== null) searchParams[key] = value;
   }
+  const modelNeedle = (request.nextUrl.searchParams.get("modelFilter") || "").trim();
   try {
     const filters = await resolveClickHouseFilters(searchParams);
     if (!filters) throw new Error("ClickHouse data is not ready");
-    const detail = await getClickHouseUserDetail(filters, userId, username);
+    const detail = await getClickHouseUserDetail(filters, userId, username, modelNeedle || undefined);
     return NextResponse.json({ detail }, { headers });
   } catch (error) {
     console.error("[clickhouse-query] user detail failed", error);
