@@ -6,6 +6,7 @@ import { DashboardHeaderControls } from "@/components/dashboard/filters";
 import { DashboardRollupStatusPanel } from "@/components/dashboard/rollup-status-panel";
 import { StabilitySection } from "@/components/dashboard/stability-section";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
+import { ModelTokenPieChart } from "@/components/dashboard/model-token-pie-chart";
 import { TokenRankingTable } from "@/components/dashboard/token-ranking-table";
 import { UsageTrendChart } from "@/components/dashboard/usage-trend-chart";
 import { AppHeader } from "@/components/navigation/app-header";
@@ -32,6 +33,7 @@ async function PacketSections({ packetPromise }: { packetPromise: Promise<ClickH
   return <>
     <SummaryCards summary={data.summary} stabilitySummary={data.stabilitySummary} />
     <TokenRankingTable tokenRows={data.tokenRankings} userRows={data.userRankings} modelRows={data.modelRankings} channelRows={data.channelRankings} />
+    <ModelTokenPieChart rows={data.modelRankings} />
     <StabilitySection modelRows={data.modelStability} channelRows={data.channelStability} />
     <UsageTrendChart data={data.trend} granularity={data.granularity} />
   </>;

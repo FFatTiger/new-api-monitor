@@ -128,6 +128,35 @@ export function TableSkeleton({ kind }: { kind: "ranking" | "stability" }) {
   );
 }
 
+export function ModelTokenPieSkeleton() {
+  return (
+    <section className="ds-panel px-4 py-4 sm:px-5 sm:py-5">
+      <div className="ds-divider mb-4 flex flex-wrap items-end justify-between gap-3 pb-4">
+        <div>
+          <p className="ds-kicker">分布</p>
+          <h2 className="mt-3 text-[1.16rem] font-semibold leading-none tracking-[-0.07em] text-[var(--foreground)] sm:text-[1.45rem]">
+            模型 Token 消耗
+          </h2>
+        </div>
+        <SkeletonBlock className="h-8 w-20" />
+      </div>
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] lg:items-center">
+        <div className="grid h-72 place-items-center rounded-[18px] bg-[var(--background-elevated)] shadow-[0_0_0_1px_var(--surface-ring-soft)] sm:h-80">
+          <SkeletonBlock className="h-40 w-40 rounded-full" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <div key={index} className="flex items-center justify-between gap-3">
+              <SkeletonBlock className="h-4 w-36" />
+              <SkeletonBlock className="h-4 w-12" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function TrendSkeleton() {
   return (
     <section className="ds-panel px-4 py-4 sm:px-5 sm:py-5">
@@ -158,6 +187,7 @@ export function DashboardContentSkeleton() {
     <div className="flex flex-col gap-8 sm:gap-10" aria-busy="true" aria-label="数据刷新中">
       <SummarySkeleton />
       <TableSkeleton kind="ranking" />
+      <ModelTokenPieSkeleton />
       <TableSkeleton kind="stability" />
       <TrendSkeleton />
     </div>
