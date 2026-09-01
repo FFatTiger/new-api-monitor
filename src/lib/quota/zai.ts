@@ -7,6 +7,74 @@ import { normalizeNumberValue, normalizeStringValue } from "./upstream.ts";
 export const ZAI_AUTH_INDEX = "server-zai";
 export const ZAI_USAGE_URL = "https://api.z.ai/api/monitor/usage/quota/limit";
 
+export type ZaiEnvSource = NodeJS.ProcessEnv | Record<string, string | undefined>;
+
+/**
+ * Parses a comma separated Z.ai key list (Chinese full-width comma tolerated).
+ * Empty segments are dropped and duplicate keys keep their first position.
+ */
+export function parseZaiApiKeysValue(value: unknown): string[] {
+  if (typeof value !== "string") return [];
+
+  const seen = new Set<string>();
+  const keys: string[] = [];
+
+  value
+    .split(",")
+    .flatMap((part) => part.split("\uFF0C"))
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .forEach((key) => {
+      if (seen.has(key)) return;
+      seen.add(key);
+      keys.push(key);
+    });
+
+  return keys;
+}
+
+/**
+ * ZAI_API_KEYS (comma separated, multiple cards) wins; otherwise the legacy
+ * single ZAI_API_KEY / ZAI_API_TOKEN env is kept as a one-key list.
+ */
+export function getZaiApiKeysFromEnv(env: ZaiEnvSource = process.env): string[] {
+  const multi = parseZaiApiKeysValue(env.ZAI_API_KEYS);
+  if (multi.length > 0) return multi;
+
+  const single = (env.ZAI_API_KEY || env.ZAI_API_TOKEN || "").trim();
+  return single ? [single] : [];
+}
+
+/**
+ * Slot 0 keeps the historical "server-zai" index so existing deployments keep
+ * their quota history; additional keys get "server-zai-2", "server-zai-3", ...
+ */
+export function buildZaiAuthIndex(slot: number): string {
+  return slot <= 0 ? ZAI_AUTH_INDEX : `${ZAI_AUTH_INDEX}-${slot + 1}`;
+}
+
+export function getZaiSlotFromAuthIndex(value: unknown): number | null {
+  const raw = String(value ?? "").trim();
+  if (raw === ZAI_AUTH_INDEX) return 0;
+
+  const match = /^server-zai-([2-9][0-9]*)$/.exec(raw);
+  if (!match) return null;
+
+  return Number(match[1]) - 1;
+}
+
+export function getZaiKeyForAuthIndex(authIndex: unknown, keys: string[]): string | null {
+  const slot = getZaiSlotFromAuthIndex(authIndex);
+  if (slot === null || slot >= keys.length) return null;
+  return keys[slot] ?? null;
+}
+
+/** Single key keeps the plain "Z.ai" card; extra keys are masked for identification. */
+export function buildZaiDisplayName(apiKey: string, total: number): string {
+  if (total <= 1) return "Z.ai";
+  return `Z.ai ····${apiKey.slice(-4)}`;
+}
+
 type ZaiLimit = {
   type?: unknown;
   unit?: unknown;
@@ -73,7 +141,7 @@ function getZaiLevelLabel(level: string | null) {
 }
 
 export function isZaiAuthIndex(value: unknown) {
-  return String(value ?? "").trim() === ZAI_AUTH_INDEX;
+  return getZaiSlotFromAuthIndex(value) !== null;
 }
 
 export function buildZaiQuotaWindows(payload: unknown): RateLimitWindow[] {

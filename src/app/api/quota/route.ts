@@ -11,14 +11,14 @@ import {
 import { buildGrokQuotaDataFromApiCallResults } from "@/lib/quota/grok";
 import { buildQuotaApiCall, findRawAuthFile, type BackendApiCall, type QuotaProxyRequest } from "@/lib/quota/server-proxy";
 import { resolveProviderType } from "@/lib/quota/upstream";
-import { isZaiAuthIndex, ZAI_USAGE_URL } from "@/lib/quota/zai";
+import { getZaiKeyForAuthIndex, getZaiApiKeysFromEnv, ZAI_USAGE_URL } from "@/lib/quota/zai";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
 const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
-const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.ZAI_API_TOKEN || "";
+const ZAI_API_KEYS = getZaiApiKeysFromEnv();
 const MINIMAX_API_KEY = normalizeMiniMaxApiKey(process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "");
 const MINIMAX_API_REGION = process.env.MINIMAX_API_REGION || "auto";
 const MINIMAX_API_BASE_URL = process.env.MINIMAX_API_BASE_URL || "";
@@ -94,14 +94,14 @@ function publicError(status = 500) {
   );
 }
 
-async function fetchZaiQuota() {
-  if (!ZAI_API_KEY) {
+async function fetchZaiQuota(apiKey: string) {
+  if (!apiKey) {
     return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
   }
 
   const response = await fetch(ZAI_USAGE_URL, {
     headers: {
-      Authorization: `Bearer ${ZAI_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     cache: "no-store",
   });
@@ -190,11 +190,16 @@ export async function POST(request: NextRequest) {
     const requestedProvider = resolveProviderType({ type: body.provider });
 
     if (requestedProvider === "zai") {
-      if (!isZaiAuthIndex(body.authIndex)) {
+      if (ZAI_API_KEYS.length === 0) {
+        return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
+      }
+
+      const zaiApiKey = getZaiKeyForAuthIndex(body.authIndex, ZAI_API_KEYS);
+      if (!zaiApiKey) {
         return publicError(400);
       }
 
-      return fetchZaiQuota();
+      return fetchZaiQuota(zaiApiKey);
     }
 
     if (requestedProvider === "minimax") {

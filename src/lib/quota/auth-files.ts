@@ -1,4 +1,5 @@
 import { parseIdTokenPayload } from "./parse-id-token.ts";
+import { buildZaiAuthIndex, buildZaiDisplayName } from "./zai.ts";
 
 const EMAIL_REGEX = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 const KEY_LIKE_TOKEN_REGEX =
@@ -128,12 +129,13 @@ export function normalizeAuthIndex(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-export function buildZaiAuthFile(apiKey: unknown): SanitizedAuthFile | null {
-  if (typeof apiKey !== "string" || !apiKey.trim()) return null;
+export function buildZaiAuthFile(apiKey: unknown, slot = 0, total = 1): SanitizedAuthFile | null {
+  const key = typeof apiKey === "string" ? apiKey.trim() : "";
+  if (!key) return null;
 
   return {
-    authIndex: "server-zai",
-    displayName: "Z.ai",
+    authIndex: buildZaiAuthIndex(slot),
+    displayName: buildZaiDisplayName(key, total),
     type: "zai",
     provider: "zai",
     runtimeOnly: false,

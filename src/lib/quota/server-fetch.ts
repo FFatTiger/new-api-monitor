@@ -33,7 +33,7 @@ import {
   resolveClaudePlanType,
   resolveProviderType,
 } from "./upstream.ts";
-import { buildZaiQuotaData, ZAI_USAGE_URL } from "./zai.ts";
+import { buildZaiQuotaData, getZaiKeyForAuthIndex, ZAI_USAGE_URL } from "./zai.ts";
 
 export type ServerQuotaFetchContext = {
   config: QuotaServerConfig;
@@ -280,12 +280,13 @@ async function fetchAntigravityQuotaOnServer(file: AuthFile, context: ServerQuot
   throw new Error(lastError || "Failed to fetch Antigravity quota");
 }
 
-async function fetchZaiQuotaOnServer(context: ServerQuotaFetchContext): Promise<QuotaData> {
-  if (!context.config.zaiApiKey) throw new Error("Server configuration missing");
+async function fetchZaiQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
+  const apiKey = getZaiKeyForAuthIndex(file.authIndex, context.config.zaiApiKeys);
+  if (!apiKey) throw new Error("Server configuration missing");
 
   const response = await (context.fetchImpl || fetch)(ZAI_USAGE_URL, {
     headers: {
-      Authorization: `Bearer ${context.config.zaiApiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     cache: "no-store",
   });
@@ -367,7 +368,7 @@ export async function fetchQuotaForAuthFileOnServer(file: AuthFile, context: Ser
   if (provider === "xai") return fetchGrokQuotaOnServer(file, context);
   if (provider === "kimi") return fetchKimiQuotaOnServer(file, context);
   if (provider === "minimax") return fetchMiniMaxQuotaOnServer(context);
-  if (provider === "zai") return fetchZaiQuotaOnServer(context);
+  if (provider === "zai") return fetchZaiQuotaOnServer(file, context);
 
   throw new Error(`Unsupported provider: ${provider}`);
 }

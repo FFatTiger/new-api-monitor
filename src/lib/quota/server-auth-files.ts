@@ -7,11 +7,12 @@ import {
   sanitizeAuthFile,
   type RawAuthFile,
 } from "./auth-files.ts";
+import { getZaiApiKeysFromEnv } from "./zai.ts";
 
 export type QuotaServerConfig = {
   apiBaseUrl: string;
   apiManagementKey: string;
-  zaiApiKey: string;
+  zaiApiKeys: string[];
   miniMaxApiKey: string;
   miniMaxApiRegion: string;
   miniMaxApiBaseUrl: string;
@@ -27,16 +28,20 @@ export function getQuotaServerConfig(env: NodeJS.ProcessEnv = process.env): Quot
   return {
     apiBaseUrl: (env.API_BASE_URL || "").replace(/\/+$/, ""),
     apiManagementKey: env.API_MANAGEMENT_KEY || "",
-    zaiApiKey: env.ZAI_API_KEY || env.ZAI_API_TOKEN || "",
+    zaiApiKeys: getZaiApiKeysFromEnv(env),
     miniMaxApiKey: env.MINIMAX_API_KEY || env.MINIMAX_API_TOKEN || "",
     miniMaxApiRegion: env.MINIMAX_API_REGION || "auto",
     miniMaxApiBaseUrl: env.MINIMAX_API_BASE_URL || "",
   };
 }
 
-export function buildRuntimeAuthFiles(config: Pick<QuotaServerConfig, "zaiApiKey" | "miniMaxApiKey" | "miniMaxApiRegion">): AuthFile[] {
+export function buildRuntimeAuthFiles(config: Pick<QuotaServerConfig, "zaiApiKeys" | "miniMaxApiKey" | "miniMaxApiRegion">): AuthFile[] {
+  const zaiFiles = config.zaiApiKeys.map((apiKey, slot) =>
+    buildZaiAuthFile(apiKey, slot, config.zaiApiKeys.length),
+  );
+
   return [
-    buildZaiAuthFile(config.zaiApiKey),
+    ...zaiFiles,
     buildMiniMaxAuthFile(config.miniMaxApiKey, config.miniMaxApiRegion),
   ].filter((file): file is NonNullable<typeof file> => Boolean(file));
 }

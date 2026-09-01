@@ -35,6 +35,19 @@ describe("auth file sanitization", () => {
     assert.equal(buildZaiAuthFile(""), null);
   });
 
+  it("builds numbered indexes and masked names for additional Z.ai keys", () => {
+    const first = buildZaiAuthFile("fake-zai-key-abcd", 0, 2);
+    const second = buildZaiAuthFile("fake-zai-key-wxyz", 1, 2);
+
+    assert.ok(first);
+    assert.ok(second);
+    assert.equal(first.authIndex, "server-zai");
+    assert.equal(second.authIndex, "server-zai-2");
+    assert.equal(first.displayName, "Z.ai ····abcd");
+    assert.equal(second.displayName, "Z.ai ····wxyz");
+    assert.equal(JSON.stringify([first, second]).includes("fake-zai-key"), false);
+  });
+
   it("builds a MiniMax auth file marker without exposing the configured api key", () => {
     const file = buildMiniMaxAuthFile("fake-minimax-key", "cn");
 

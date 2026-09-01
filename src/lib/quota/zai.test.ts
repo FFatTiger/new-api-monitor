@@ -1,7 +1,66 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildZaiQuotaData, buildZaiQuotaWindows } from "./zai.ts";
+import {
+  buildZaiAuthIndex,
+  buildZaiQuotaData,
+  buildZaiQuotaWindows,
+  getZaiApiKeysFromEnv,
+  getZaiKeyForAuthIndex,
+  getZaiSlotFromAuthIndex,
+  isZaiAuthIndex,
+  parseZaiApiKeysValue,
+} from "./zai.ts";
+
+describe("z.ai api key list", () => {
+  it("splits comma separated keys, trims, drops empties and dedupes", () => {
+    assert.deepEqual(parseZaiApiKeysValue(" key-a , key-b ,,key-a, , "), ["key-a", "key-b"]);
+    assert.deepEqual(parseZaiApiKeysValue("key-a\uFF0Ckey-b"), ["key-a", "key-b"]);
+    assert.deepEqual(parseZaiApiKeysValue(""), []);
+    assert.deepEqual(parseZaiApiKeysValue(null), []);
+  });
+
+  it("prefers ZAI_API_KEYS and falls back to the legacy single key envs", () => {
+    assert.deepEqual(getZaiApiKeysFromEnv({ ZAI_API_KEYS: "key-a,key-b", ZAI_API_KEY: "legacy" }), ["key-a", "key-b"]);
+    assert.deepEqual(getZaiApiKeysFromEnv({ ZAI_API_KEY: "legacy" }), ["legacy"]);
+    assert.deepEqual(getZaiApiKeysFromEnv({ ZAI_API_TOKEN: "token" }), ["token"]);
+    assert.deepEqual(getZaiApiKeysFromEnv({ ZAI_API_KEYS: " , ", ZAI_API_KEY: "legacy" }), ["legacy"]);
+    assert.deepEqual(getZaiApiKeysFromEnv({}), []);
+  });
+});
+
+describe("z.ai auth index slots", () => {
+  it("keeps slot 0 on the historical server-zai index", () => {
+    assert.equal(buildZaiAuthIndex(0), "server-zai");
+    assert.equal(getZaiSlotFromAuthIndex("server-zai"), 0);
+  });
+
+  it("maps extra slots to server-zai-N and back", () => {
+    assert.equal(buildZaiAuthIndex(1), "server-zai-2");
+    assert.equal(getZaiSlotFromAuthIndex("server-zai-2"), 1);
+    assert.equal(buildZaiAuthIndex(4), "server-zai-5");
+    assert.equal(getZaiSlotFromAuthIndex("server-zai-5"), 4);
+  });
+
+  it("rejects colliding or malformed indexes", () => {
+    assert.equal(getZaiSlotFromAuthIndex("server-zai-1"), null);
+    assert.equal(getZaiSlotFromAuthIndex("server-zai-01"), null);
+    assert.equal(getZaiSlotFromAuthIndex("server-zai-x"), null);
+    assert.equal(getZaiSlotFromAuthIndex("server-minimax"), null);
+    assert.equal(isZaiAuthIndex("server-zai-3"), true);
+    assert.equal(isZaiAuthIndex("server-zai-1"), false);
+    assert.equal(isZaiAuthIndex("server-minimax"), false);
+  });
+
+  it("resolves the key for a slot and reports out-of-range indexes", () => {
+    const keys = ["key-a", "key-b", "key-c"];
+    assert.equal(getZaiKeyForAuthIndex("server-zai", keys), "key-a");
+    assert.equal(getZaiKeyForAuthIndex("server-zai-3", keys), "key-c");
+    assert.equal(getZaiKeyForAuthIndex("server-zai-4", keys), null);
+    assert.equal(getZaiKeyForAuthIndex("server-minimax", keys), null);
+    assert.equal(getZaiKeyForAuthIndex("server-zai", []), null);
+  });
+});
 
 describe("z.ai quota compatibility", () => {
   it("treats percentage as a 0-100 used percentage even when the value is 1", () => {

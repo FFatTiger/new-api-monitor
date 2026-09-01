@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { buildMiniMaxAuthFile, buildZaiAuthFile, extractProjectId, sanitizeAuthFile, type RawAuthFile } from "@/lib/quota/auth-files";
+import { getZaiApiKeysFromEnv } from "@/lib/quota/zai";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
 const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
-const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.ZAI_API_TOKEN || "";
+const ZAI_API_KEYS = getZaiApiKeysFromEnv();
 const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "";
 const MINIMAX_API_REGION = process.env.MINIMAX_API_REGION || "auto";
 
@@ -39,7 +40,7 @@ function publicError(status = 500) {
 
 export async function GET() {
   const serverAuthFiles = [
-    buildZaiAuthFile(ZAI_API_KEY),
+    ...ZAI_API_KEYS.map((apiKey, slot) => buildZaiAuthFile(apiKey, slot, ZAI_API_KEYS.length)),
     buildMiniMaxAuthFile(MINIMAX_API_KEY, MINIMAX_API_REGION),
   ].filter((file): file is NonNullable<typeof file> => Boolean(file));
 
