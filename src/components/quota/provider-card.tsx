@@ -10,6 +10,7 @@ import { ProviderIcon } from "@/components/quota/provider-icon";
 import { QuotaIcons } from "@/components/quota/quota-icons";
 import { getWeeklyQuotaRingData, type WeeklyQuotaRingData } from "@/lib/quota/card-ring";
 import { getCodexPlanLabel } from "@/lib/quota/upstream";
+import { formatDateTime } from "@/lib/format";
 
 function getCodexPlanBadge(data: Record<string, unknown> | undefined): string | null {
   if (!data) return null;
@@ -145,7 +146,14 @@ export function ProviderCard({ file, provider, quota, selectedProvider }: Provid
             <div className="h-2 w-2/3 rounded-full bg-[var(--background-subtle)]" />
           </div>
         ) : quota.error ? (
-          <p className="text-[0.78rem] leading-5 text-red-500">{quota.error}</p>
+          <div>
+            <p className="text-[0.78rem] leading-5 text-red-500">{quota.error}</p>
+            {quota.lastUpdated ? (
+              <p className="mt-1 text-[0.66rem] text-[var(--foreground-faint)]" title={`采样时间 ${formatDateTime(Math.floor(quota.lastUpdated / 1000))}`}>
+                更新于 {formatDateTime(Math.floor(quota.lastUpdated / 1000))}
+              </p>
+            ) : null}
+          </div>
         ) : !quota.data ? (
           <p className="text-[0.78rem] leading-5 text-[var(--foreground-faint)]">点击刷新获取配额</p>
         ) : (

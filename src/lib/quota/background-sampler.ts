@@ -82,8 +82,10 @@ export async function sampleQuotaUsageOnce(nowSeconds = Math.floor(Date.now() / 
       authIndex: file.authIndex,
       provider,
       sampledAt: nowSeconds,
-      successCount: stats.success,
-      failureCount: stats.failure,
+      // 与 CPA 管理页同源：优先后端 auth-files 自带的累计计数器；
+      // 仅运行时凭元（无后端记录）回退到 /usage 请求明细统计。
+      successCount: file.successCount ?? stats.success,
+      failureCount: file.failureCount ?? stats.failure,
     };
 
     const skipReason = getQuotaFetchSkipReason(file);

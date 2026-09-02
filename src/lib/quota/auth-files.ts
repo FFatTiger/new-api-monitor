@@ -15,6 +15,9 @@ export interface RawAuthFile {
   runtime_only?: boolean | string;
   statusMessage?: string;
   status_message?: string;
+  /** CPA 核心维护的累计计数，与 /usage 请求明细是两条记账路径。 */
+  success?: string | number;
+  failed?: string | number;
   metadata?: Record<string, unknown>;
   attributes?: Record<string, unknown>;
   id_token?: string | Record<string, unknown>;
@@ -36,6 +39,13 @@ export interface SanitizedAuthFile {
   projectId: string | null;
   statusMessage: string | null;
   planType: string | null;
+  successCount?: number;
+  failureCount?: number;
+}
+
+function toCount(value: unknown): number | undefined {
+  const parsed = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function maskString(value: string): string {
@@ -195,6 +205,8 @@ export function sanitizeAuthFile(file: RawAuthFile, projectId: string | null): S
     unavailable: file.unavailable === true || file.unavailable === "true",
     projectId,
     statusMessage: sanitizeStatusMessage(rawStatusMessage),
+    successCount: toCount(file.success),
+    failureCount: toCount(file.failed),
     planType: (file.planType ||
       file.plan_type ||
       metadata?.planType ||

@@ -23,6 +23,37 @@ describe("auth file sanitization", () => {
     assert.equal(file.displayName, "pe*son@ex******com");
   });
 
+  it("passes through backend success/failed counters and tolerates junk values", () => {
+    const file = sanitizeAuthFile(
+      {
+        name: "claude-person@example.com.json",
+        type: "claude",
+        provider: "claude",
+        authIndex: 7,
+        success: "123",
+        failed: 4,
+      },
+      null,
+    );
+
+    assert.equal(file.successCount, 123);
+    assert.equal(file.failureCount, 4);
+
+    const broken = sanitizeAuthFile(
+      { name: "claude-x@example.com.json", type: "claude", authIndex: 8, success: "abc", failed: -1 },
+      null,
+    );
+    assert.equal(broken.successCount, undefined);
+    assert.equal(broken.failureCount, undefined);
+
+    const runtime = sanitizeAuthFile(
+      { name: "claude-y@example.com.json", type: "claude", authIndex: 9 },
+      null,
+    );
+    assert.equal(runtime.successCount, undefined);
+    assert.equal(runtime.failureCount, undefined);
+  });
+
   it("builds a Z.ai auth file marker without exposing the configured api key", () => {
     const file = buildZaiAuthFile("fake-zai-key");
 
