@@ -8,6 +8,7 @@ import {
   formatInteger,
   formatOutputTokensPerSec,
   formatPercent,
+  getCacheRatio,
 } from "@/lib/format";
 import type { StabilitySummary, SummaryMetrics } from "@/lib/queries/dashboard";
 
@@ -102,6 +103,31 @@ const cards: Array<{
     foot: "成功 / 总请求",
     getValue: (_, stabilitySummary) => getAvailabilityRate(stabilitySummary.errorRate),
     format: formatPercent,
+    valueClassName: "text-[var(--foreground)]",
+  },
+  {
+    key: "frtP95",
+    label: "首 Token P95",
+    foot: "秒",
+    getValue: (summary) => summary.frtP95 ?? null,
+    format: formatDurationMsAsSeconds,
+    valueClassName: "text-[var(--foreground)]",
+  },
+  {
+    key: "responseP95",
+    label: "总耗时 P95",
+    foot: "秒",
+    getValue: (summary) => summary.responseP95 ?? null,
+    format: formatDurationSeconds,
+    valueClassName: "text-[var(--foreground)]",
+  },
+  {
+    key: "cacheHitRate",
+    label: "缓存命中率",
+    foot: "cache / 输入",
+    getValue: (summary) =>
+      summary.inputTokens > 0 ? getCacheRatio(summary.inputTokens, summary.cacheTokens) : null,
+    format: (value) => formatPercent(value),
     valueClassName: "text-[var(--foreground)]",
   },
 ];

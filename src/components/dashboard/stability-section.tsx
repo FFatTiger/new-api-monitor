@@ -13,12 +13,17 @@ import {
 } from "@/lib/format";
 import type {
   ChannelStabilityRow,
+  ErrorChannelRow,
+  ErrorTypeRow,
   ModelStabilityRow,
 } from "@/lib/queries/dashboard";
 
 interface StabilitySectionProps {
   modelRows: ModelStabilityRow[];
   channelRows: ChannelStabilityRow[];
+  errorTypes: ErrorTypeRow[];
+  errorChannels: ErrorChannelRow[];
+  channelNames: Record<string, string>;
 }
 
 type DimensionKey = "model" | "channel";
@@ -30,7 +35,9 @@ type SortKey =
   | "errorCount"
   | "availabilityRate"
   | "avgFirstTokenLatency"
+  | "frtP95"
   | "avgTotalResponseTime"
+  | "responseP95"
   | "avgOutputTokensPerSec"
   | "latestUsedAt";
 type SortDirection = "asc" | "desc";
@@ -43,7 +50,9 @@ interface StabilityViewRow {
   errorCount: number;
   availabilityRate: number;
   avgFirstTokenLatency: number | null;
+  frtP95: number | null;
   avgTotalResponseTime: number | null;
+  responseP95: number | null;
   avgOutputTokensPerSec: number | null;
   latestUsedAt: number;
 }
@@ -73,7 +82,9 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     errorCount: "错误",
     availabilityRate: "可用率",
     avgFirstTokenLatency: "首 Token",
+    frtP95: "首 Token P95",
     avgTotalResponseTime: "总耗时",
+    responseP95: "总耗时 P95",
     avgOutputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
@@ -85,7 +96,9 @@ const sortLabelsByDimension: Record<DimensionKey, Record<SortKey, string>> = {
     errorCount: "错误",
     availabilityRate: "可用率",
     avgFirstTokenLatency: "首 Token",
+    frtP95: "首 Token P95",
     avgTotalResponseTime: "总耗时",
+    responseP95: "总耗时 P95",
     avgOutputTokensPerSec: "输出 tok/s",
     latestUsedAt: "最近调用",
   },
@@ -135,8 +148,14 @@ function sortRows(rows: StabilityViewRow[], sortKey: SortKey, sortDirection: Sor
         case "avgFirstTokenLatency":
           result = (left.row.avgFirstTokenLatency ?? -1) - (right.row.avgFirstTokenLatency ?? -1);
           break;
+        case "frtP95":
+          result = (left.row.frtP95 ?? -1) - (right.row.frtP95 ?? -1);
+          break;
         case "avgTotalResponseTime":
           result = (left.row.avgTotalResponseTime ?? -1) - (right.row.avgTotalResponseTime ?? -1);
+          break;
+        case "responseP95":
+          result = (left.row.responseP95 ?? -1) - (right.row.responseP95 ?? -1);
           break;
         case "avgOutputTokensPerSec":
           result = (left.row.avgOutputTokensPerSec ?? -1) - (right.row.avgOutputTokensPerSec ?? -1);
@@ -157,7 +176,7 @@ function sortRows(rows: StabilityViewRow[], sortKey: SortKey, sortDirection: Sor
     .map((item) => item.row);
 }
 
-export function StabilitySection({ modelRows, channelRows }: StabilitySectionProps) {
+export function StabilitySection({ modelRows, channelRows, errorTypes, errorChannels, channelNames }: StabilitySectionProps) {
   const [activeDimension, setActiveDimension] = useState<DimensionKey>("model");
   const [sortKey, setSortKey] = useState<SortKey>(defaultSortState.model.key);
   const [sortDirection, setSortDirection] = useState<SortDirection>(defaultSortState.model.direction);
@@ -175,7 +194,9 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
           errorCount: row.errorCount,
           availabilityRate: getAvailabilityRate(row.errorRate),
           avgFirstTokenLatency: row.avgFirstTokenLatency,
+          frtP95: row.frtP95 ?? null,
           avgTotalResponseTime: row.avgTotalResponseTime,
+          responseP95: row.responseP95 ?? null,
           avgOutputTokensPerSec: row.avgOutputTokensPerSec,
           latestUsedAt: row.latestUsedAt,
         })),
@@ -185,19 +206,21 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
         infoLabel: "状态",
         rows: channelRows.map((row) => ({
           key: String(row.channelId),
-          name: row.channelName,
+          name: channelNames[String(row.channelId)] || row.channelName,
           info: `${formatStatus(row.status)} · 类型 ${row.type}`,
           totalAttempts: row.totalAttempts,
           errorCount: row.errorCount,
           availabilityRate: getAvailabilityRate(row.errorRate),
           avgFirstTokenLatency: row.avgFirstTokenLatency,
+          frtP95: row.frtP95 ?? null,
           avgTotalResponseTime: row.avgTotalResponseTime,
+          responseP95: row.responseP95 ?? null,
           avgOutputTokensPerSec: row.avgOutputTokensPerSec,
           latestUsedAt: row.latestUsedAt,
         })),
       },
     }),
-    [channelRows, modelRows],
+    [channelNames, channelRows, modelRows],
   );
 
   const activeView = views[activeDimension];
@@ -334,6 +357,12 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
                 总耗时 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatDurationSeconds(row.avgTotalResponseTime)}</span>
               </span>
               <span>
+                P95 首 Token <span className="ml-1 ds-mono text-[var(--foreground)]">{formatDurationMsAsSeconds(row.frtP95)}</span>
+              </span>
+              <span className="text-right">
+                P95 总耗时 <span className="ml-1 ds-mono text-[var(--foreground)]">{formatDurationSeconds(row.responseP95)}</span>
+              </span>
+              <span>
                 输出 tok/s <span className="ml-1 ds-mono text-[var(--foreground)]">{formatOutputTokensPerSec(row.avgOutputTokensPerSec)}</span>
               </span>
               <span className="col-span-2 text-right">{formatDateTime(row.latestUsedAt)}</span>
@@ -355,6 +384,8 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
                 <SortableHeader label="可用率" sortKey="availabilityRate" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="首 Token" sortKey="avgFirstTokenLatency" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="总耗时" sortKey="avgTotalResponseTime" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
+                <SortableHeader label="首 Token P95" sortKey="frtP95" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
+                <SortableHeader label="总耗时 P95" sortKey="responseP95" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="输出 tok/s" sortKey="avgOutputTokensPerSec" activeKey={sortKey} direction={sortDirection} onSort={handleSort} align="right" />
                 <SortableHeader label="最近调用" sortKey="latestUsedAt" activeKey={sortKey} direction={sortDirection} onSort={handleSort} />
               </tr>
@@ -374,6 +405,8 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
                   <td className="px-4 py-3 text-right ds-mono text-[0.94rem] font-semibold tracking-[-0.05em] text-[var(--foreground)]">{formatAvailabilityRate(row.availabilityRate)}</td>
                   <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatDurationMsAsSeconds(row.avgFirstTokenLatency)}</td>
                   <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatDurationSeconds(row.avgTotalResponseTime)}</td>
+                  <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatDurationMsAsSeconds(row.frtP95)}</td>
+                  <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatDurationSeconds(row.responseP95)}</td>
                   <td className="px-4 py-3 text-right ds-mono text-[0.78rem] text-[var(--foreground-muted)]">{formatOutputTokensPerSec(row.avgOutputTokensPerSec)}</td>
                   <td className="px-4 py-3 text-[0.74rem] text-[var(--foreground-soft)]">{formatDateTime(row.latestUsedAt)}</td>
                 </tr>
@@ -382,7 +415,113 @@ export function StabilitySection({ modelRows, channelRows }: StabilitySectionPro
           </table>
         </div>
       </div>
+
+      <ErrorBreakdownPanel errorTypes={errorTypes} errorChannels={errorChannels} channelNames={channelNames} />
     </section>
+  );
+}
+
+interface ErrorBreakdownPanelProps {
+  errorTypes: ErrorTypeRow[];
+  errorChannels: ErrorChannelRow[];
+  channelNames: Record<string, string>;
+}
+
+/**
+ * 错误分类：稳定性回答“错了多少次”，这里回答“错的是什么”。
+ * 分类来自上游错误家族 × HTTP 状态码。
+ */
+function ErrorBreakdownPanel({ errorTypes, errorChannels, channelNames }: ErrorBreakdownPanelProps) {
+  const total = useMemo(
+    () => errorTypes.reduce((sum, row) => sum + row.count, 0),
+    [errorTypes],
+  );
+  const channelTotal = useMemo(
+    () => errorChannels.reduce((sum, row) => sum + row.count, 0),
+    [errorChannels],
+  );
+
+  const percentOf = (count: number, base: number) => (base > 0 ? count / base : 0);
+
+  return (
+    <div className="ds-divider mt-5 pt-4">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <p className="ds-kicker">错误分类</p>
+        <p className="text-[0.72rem] text-[var(--foreground-soft)]">
+          共 <span className="ds-mono font-semibold text-[var(--foreground)]">{formatInteger(total)}</span> 次失败
+        </p>
+      </div>
+
+      {total === 0 ? (
+        <p className="py-6 text-center text-[0.8rem] text-[var(--foreground-faint)]">
+          当前筛选范围内没有失败记录
+        </p>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="space-y-2.5">
+            {errorTypes.map((row) => {
+              const share = percentOf(row.count, total);
+              return (
+                <article
+                  key={`${row.errorType}-${row.statusCode}`}
+                  className="ds-card-muted px-3.5 py-2.5"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[0.82rem] font-medium text-[var(--foreground)]">
+                        {row.errorType}
+                        <span className="ml-1.5 ds-mono text-[0.76rem] text-[var(--foreground-muted)]">
+                          {row.statusCode > 0 ? row.statusCode : "无状态码"}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-[0.68rem] text-[var(--foreground-faint)]">
+                        {formatInteger(row.modelCount)} 个模型 · {formatInteger(row.channelCount)} 个渠道
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="ds-mono text-[0.86rem] font-semibold text-[var(--foreground)]">
+                        {formatInteger(row.count)}
+                      </p>
+                      <p className="mt-0.5 ds-mono text-[0.68rem] text-[var(--foreground-soft)]">
+                        {formatPercent(share)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--background-subtle)]">
+                    <div
+                      className="h-full rounded-full bg-red-500/70"
+                      style={{ width: `${Math.max(2, Math.min(100, share * 100))}%` }}
+                    />
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div>
+            <p className="ds-kicker text-[0.56rem] text-[var(--foreground-faint)]">错误来源渠道</p>
+            <div className="mt-2 space-y-1.5">
+              {errorChannels.map((row) => {
+                const share = percentOf(row.count, channelTotal);
+                return (
+                  <div
+                    key={row.channelId}
+                    className="flex items-center justify-between gap-3 rounded-[12px] bg-[var(--background-muted)] px-3 py-2"
+                  >
+                    <span className="truncate text-[0.78rem] text-[var(--foreground)]">
+                      {channelNames[String(row.channelId)] || row.channelName || `渠道 ${row.channelId}`}
+                    </span>
+                    <span className="shrink-0 ds-mono text-[0.76rem] text-[var(--foreground-soft)]">
+                      {formatInteger(row.count)} · {formatPercent(share)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

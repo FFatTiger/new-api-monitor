@@ -8,6 +8,7 @@ import { StabilitySection } from "@/components/dashboard/stability-section";
 import { SummaryCards } from "@/components/dashboard/summary-cards";
 import { ModelTokenPieChart } from "@/components/dashboard/model-token-pie-chart";
 import { TokenRankingTable } from "@/components/dashboard/token-ranking-table";
+import { UsageHeatmap } from "@/components/dashboard/usage-heatmap";
 import { UsageTrendChart } from "@/components/dashboard/usage-trend-chart";
 import { AppHeader } from "@/components/navigation/app-header";
 import {
@@ -58,8 +59,9 @@ async function PacketSections({
     <SummaryCards summary={data.summary} stabilitySummary={data.stabilitySummary} />
     <TokenRankingTable tokenRows={data.tokenRankings} userRows={data.userRankings} modelRows={data.modelRankings} channelRows={channelRankings} modelOptions={modelOptions} channelNames={channelNames} />
     <ModelTokenPieChart rows={data.modelRankings} />
-    <StabilitySection modelRows={data.modelStability} channelRows={channelStability} />
+    <StabilitySection modelRows={data.modelStability} channelRows={channelStability} errorTypes={data.errorTypes} errorChannels={data.errorChannels} channelNames={channelNames} />
     <UsageTrendChart data={data.trend} granularity={data.granularity} />
+    <UsageHeatmap cells={data.heatmap} trend={data.trend} granularity={data.granularity} />
   </>;
 }
 

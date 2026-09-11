@@ -39,6 +39,9 @@ export interface SummaryMetrics {
   avgOutputTokensPerSec: number | null;
   activeUserCount: number;
   activeChannelCount: number;
+  /** Histogram-derived percentiles; absent on the legacy rollup path. */
+  frtP95?: number | null;
+  responseP95?: number | null;
 }
 
 export interface TokenDetailModelRow {
@@ -165,6 +168,8 @@ export interface ModelStabilityRow {
   avgFirstTokenLatency: number | null;
   avgTotalResponseTime: number | null;
   avgOutputTokensPerSec: number | null;
+  frtP95?: number | null;
+  responseP95?: number | null;
   latestUsedAt: number;
 }
 
@@ -180,7 +185,36 @@ export interface ChannelStabilityRow {
   avgFirstTokenLatency: number | null;
   avgTotalResponseTime: number | null;
   avgOutputTokensPerSec: number | null;
+  frtP95?: number | null;
+  responseP95?: number | null;
   latestUsedAt: number;
+}
+
+/** One failure classifier (upstream family × HTTP status) with its counts. */
+export interface ErrorTypeRow {
+  errorType: string;
+  statusCode: number;
+  count: number;
+  modelCount: number;
+  channelCount: number;
+}
+
+/** Error volume attributed to a channel, for "who is failing" triage. */
+export interface ErrorChannelRow {
+  channelId: number;
+  channelName: string;
+  count: number;
+}
+
+/** One local weekday×hour bucket of the usage heatmap (weekday 0=Sunday). */
+export interface HeatmapCell {
+  weekday: number;
+  hour: number;
+  requestCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheTokens: number;
 }
 
 export interface TrendPoint {
