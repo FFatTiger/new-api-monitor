@@ -19,9 +19,10 @@ interface TokenDetailDialogProps {
   onClose: () => void;
   /** Ranking-scoped model filter that overrides the dashboard-level model filter. */
   modelOverride?: string;
+  channelNames: Record<string, string>;
 }
 
-export function TokenDetailDialog({ row, open, onClose, modelOverride = "" }: TokenDetailDialogProps) {
+export function TokenDetailDialog({ row, open, onClose, modelOverride = "", channelNames }: TokenDetailDialogProps) {
   const searchParams = useSearchParams();
   const [detailResult, setDetailResult] = useState<{ url: string; detail: TokenDetailData | null; error: string | null } | null>(null);
   const [lastRow, setLastRow] = useState<TokenRankingRow | null>(null);
@@ -160,17 +161,20 @@ export function TokenDetailDialog({ row, open, onClose, modelOverride = "" }: To
             loading={detailLoading}
             title="渠道调用排行"
             emptyText="当前筛选条件下没有渠道调用记录"
-            rows={(tokenDetail?.channels ?? []).map((channel) => ({
-              key: `${channel.channelId}-${channel.channelName}`,
-              title: channel.channelName,
-              metric: <>总 {formatCompactNumber(channel.totalTokens)}</>,
-              subMetric: (
-                <>
-                  输入 {formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 {formatCompactNumber(channel.outputTokens)}
-                </>
-              ),
-              meta: `请求 ${channel.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(channel.latestUsedAt)}`,
-            }))}
+            rows={(tokenDetail?.channels ?? []).map((channel) => {
+              const channelName = channelNames[String(channel.channelId)] || channel.channelName;
+              return {
+                key: `${channel.channelId}-${channelName}`,
+                title: channelName,
+                metric: <>总 {formatCompactNumber(channel.totalTokens)}</>,
+                subMetric: (
+                  <>
+                    输入 {formatInputWithCache(channel.inputTokens, channel.cacheTokens)} · 输出 {formatCompactNumber(channel.outputTokens)}
+                  </>
+                ),
+                meta: `请求 ${channel.requestCount.toLocaleString("zh-CN")} · 最近 ${formatDateTime(channel.latestUsedAt)}`,
+              };
+            })}
           />
         </div>
 

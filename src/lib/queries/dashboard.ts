@@ -471,6 +471,22 @@ async function getDashboardQueryContext(input: SearchParamsInput | DashboardFilt
   };
 }
 
+export async function getCanonicalChannelOptions(): Promise<FilterOption[]> {
+  const result = await query<{ id: string | number; label: string }>(
+    `
+      SELECT id, BTRIM(name) AS label
+      FROM channels
+      WHERE NULLIF(BTRIM(name), '') IS NOT NULL
+      ORDER BY label ASC
+    `,
+  );
+
+  return result.rows.map((row) => ({
+    value: String(row.id),
+    label: row.label,
+  }));
+}
+
 async function loadUserAndChannelOptions(): Promise<{
   usernameOptions: FilterOption[];
   channelOptions: FilterOption[];

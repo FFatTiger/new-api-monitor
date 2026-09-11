@@ -26,6 +26,7 @@ interface TokenRankingTableProps {
   modelRows: ModelRankingRow[];
   channelRows: ChannelRankingRow[];
   modelOptions: FilterOption[];
+  channelNames: Record<string, string>;
 }
 
 type DimensionKey = "token" | "user" | "model" | "channel";
@@ -147,7 +148,7 @@ function sortRows(rows: RankingViewRow[], sortKey: SortKey, sortDirection: SortD
     .map((item) => item.row);
 }
 
-export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows, modelOptions }: TokenRankingTableProps) {
+export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows, modelOptions, channelNames }: TokenRankingTableProps) {
   const { selectedRow, openRow, closeRow, isOpen } = useTokenDetailDialog();
   const { selectedRow: selectedUserRow, openRow: openUserRow, closeRow: closeUserRow, isOpen: isUserOpen } = useUserDetailDialog();
   const searchParams = useSearchParams();
@@ -643,8 +644,8 @@ export function TokenRankingTable({ tokenRows, userRows, modelRows, channelRows,
         </div>
       </section>
 
-      <TokenDetailDialog row={selectedRow} open={isOpen} onClose={closeRow} modelOverride={rankingModel} />
-      <UserDetailDialog row={selectedUserRow} open={isUserOpen} onClose={closeUserRow} modelOverride={rankingModel} />
+      <TokenDetailDialog row={selectedRow} open={isOpen} onClose={closeRow} modelOverride={rankingModel} channelNames={channelNames} />
+      <UserDetailDialog row={selectedUserRow} open={isUserOpen} onClose={closeUserRow} modelOverride={rankingModel} channelNames={channelNames} />
     </>
   );
 }
