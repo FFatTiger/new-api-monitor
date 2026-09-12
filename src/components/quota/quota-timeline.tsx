@@ -30,7 +30,6 @@ const PROVIDER_ACCENT: Record<ProviderType, string> = {
   "gemini-cli": "#059669",
   kimi: "#7c3aed",
   minimax: "#0891b2",
-  sub2api: "#0284c7",
   xai: "#db2777",
   zai: "#4f46e5",
   unknown: "#64748b",

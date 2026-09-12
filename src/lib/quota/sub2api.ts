@@ -1,11 +1,13 @@
 import type { AuthFile } from "../../types/auth.ts";
 
 import { sanitizeAuthFile, type RawAuthFile } from "./auth-files.ts";
+import { resolveProviderType } from "./upstream.ts";
 
 export type Sub2ApiConfig = {
   baseUrl: string;
   email: string;
   password: string;
+  providerMap: Record<string, string>;
 };
 
 type Sub2ApiEnvelope<T> = { code?: number; message?: string; data?: T };
@@ -36,11 +38,22 @@ function normalizeBaseUrl(value: unknown) {
 
 export type Sub2ApiEnvSource = NodeJS.ProcessEnv | Record<string, string | undefined>;
 
+function parseProviderMap(value: unknown) {
+  const map: Record<string, string> = {};
+  if (typeof value !== "string") return map;
+  value.split(/[,，]/).forEach((entry) => {
+    const [source, target] = entry.split(/=|:/, 2).map((part) => part.trim().toLowerCase());
+    if (source && target && resolveProviderType({ type: target }) !== "unknown") map[source] = target;
+  });
+  return map;
+}
+
 export function getSub2ApiConfig(env: Sub2ApiEnvSource = process.env): Sub2ApiConfig {
   return {
     baseUrl: normalizeBaseUrl(env.SUB2API_BASE_URL),
     email: (env.SUB2API_EMAIL || "").trim(),
     password: env.SUB2API_PASSWORD || "",
+    providerMap: parseProviderMap(env.SUB2API_PROVIDER_MAP),
   };
 }
 
@@ -48,15 +61,14 @@ export function isSub2ApiConfigured(config: Sub2ApiConfig) {
   return Boolean(config.baseUrl && config.email && config.password);
 }
 
-function mapPlatform(platform: unknown): string | null {
+function mapPlatform(platform: unknown, customMap: Record<string, string>): string | null {
   const value = typeof platform === "string" ? platform.trim().toLowerCase() : "";
-  if (["openai", "codex"].includes(value)) return "codex";
-  if (["grok", "xai", "x.ai"].includes(value)) return "xai";
-  if (["zhipu", "zai", "z.ai"].includes(value)) return "zai";
-  if (["claude", "anthropic"].includes(value)) return "claude";
-  if (["gemini", "gemini-cli"].includes(value)) return "gemini-cli";
-  if (value === "kimi") return "kimi";
-  if (value === "antigravity") return "antigravity";
+  const custom = customMap[value];
+  if (custom) return custom;
+  const shared = resolveProviderType({ type: value });
+  if (shared !== "unknown") return shared;
+  if (value === "openai") return "codex";
+  if (value === "zhipu") return "zai";
   return null;
 }
 
@@ -106,7 +118,7 @@ export async function fetchSub2ApiCredentialFiles(
   const listed = await responseJson<{ items?: Sub2ApiAccount[] }>(accountsResponse);
   const accounts = Array.isArray(listed.items) ? listed.items : [];
   const candidates = accounts
-    .map((account) => ({ account, id: String(account.id ?? "").trim(), provider: mapPlatform(account.platform) }))
+    .map((account) => ({ account, id: String(account.id ?? "").trim(), provider: mapPlatform(account.platform, config.providerMap) }))
     .filter((entry): entry is { account: Sub2ApiAccount; id: string; provider: string } => Boolean(entry.id && entry.provider));
 
   const results = await Promise.all(
@@ -131,12 +143,7 @@ export async function fetchSub2ApiCredentialFiles(
         source: "sub2api",
         sourceAccountId: id,
       };
-      const file = {
-        ...sanitizeAuthFile(raw, null),
-        type: "sub2api",
-        provider: "sub2api",
-        planType: provider === "xai" ? "Grok" : provider === "zai" ? "Z.ai" : provider === "codex" ? "Codex" : provider,
-      } as AuthFile;
+      const file = sanitizeAuthFile(raw, null);
       return { file, raw };
     }),
   );

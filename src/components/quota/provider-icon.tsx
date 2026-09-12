@@ -33,8 +33,6 @@ export function ProviderIcon({ type }: { type: ProviderType }) {
       return <KimiIcon className="h-4 w-4 text-blue-600" />;
     case "minimax":
       return <QuotaIcons.Spark className="h-4 w-4 text-indigo-500" />;
-    case "sub2api":
-      return <QuotaIcons.Server className="h-4 w-4 text-sky-500" />;
     case "xai":
       return <GrokIcon className="h-4 w-4 text-[var(--foreground)]" />;
     case "zai":

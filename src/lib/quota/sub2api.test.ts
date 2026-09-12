@@ -41,12 +41,20 @@ describe("Sub2API credential source", () => {
     const result = await fetchSub2ApiCredentialFiles(config, fetchImpl as typeof fetch);
 
     assert.deepEqual(result.files.map((file) => [file.authIndex, file.provider, file.planType]), [
-      ["sub2api-account-7", "sub2api", "Codex"],
-      ["sub2api-account-8", "sub2api", "Z.ai"],
+      ["sub2api-account-7", "codex", null],
+      ["sub2api-account-8", "zai", null],
     ]);
     assert.equal(result.rawFiles[0]?.access_token, "secret-access-token");
     assert.equal(JSON.stringify(result.files).includes("secret-access-token"), false);
     assert.equal(JSON.stringify(result.files).includes("secret-zhipu-key"), false);
     assert.ok(calls.every((url) => url.startsWith("http://sub2api:8080/api/v1/")));
+
+    const custom = getSub2ApiConfig({
+      SUB2API_BASE_URL: "http://sub2api:8080",
+      SUB2API_EMAIL: "monitor@example.com",
+      SUB2API_PASSWORD: "password",
+      SUB2API_PROVIDER_MAP: "bedrock=zai",
+    });
+    assert.equal(custom.providerMap.bedrock, "zai");
   });
 });

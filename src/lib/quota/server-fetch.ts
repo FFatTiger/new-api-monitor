@@ -360,9 +360,10 @@ async function fetchMiniMaxQuotaOnServer(context: ServerQuotaFetchContext): Prom
 }
 
 export async function fetchQuotaForAuthFileOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
-  const sourceProvider = resolveProviderType(file);
-  const rawFile = sourceProvider === "sub2api" ? findRawAuthFile(context.rawFiles, file.authIndex) : null;
-  const provider = rawFile ? resolveProviderType(rawFile) : sourceProvider;
+  // Every CPA/Sub2API account has a same-index server-only credential record.
+  // Runtime Z.ai/MiniMax entries have none and continue to use env credentials.
+  const rawFile = context.rawFiles.find((candidate) => String(candidate.authIndex ?? candidate.auth_index) === file.authIndex) ?? null;
+  const provider = rawFile ? resolveProviderType(rawFile) : resolveProviderType(file);
 
   if (provider === "antigravity") return fetchAntigravityQuotaOnServer(file, context);
   if (provider === "claude") return fetchClaudeQuotaOnServer(file, context);
