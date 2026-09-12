@@ -12,6 +12,7 @@ const providerLabels: Record<Exclude<ProviderType, "unknown">, string> = {
   "gemini-cli": "Gemini CLI",
   kimi: "Kimi",
   minimax: "MiniMax",
+  sub2api: "Sub2API",
   xai: "Grok",
   zai: "Z.ai",
 };

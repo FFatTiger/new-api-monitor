@@ -23,6 +23,7 @@ const providerTabs: Array<{ key: ProviderFilter; label: string }> = [
   { key: "gemini-cli", label: "Gemini CLI" },
   { key: "kimi", label: "Kimi" },
   { key: "minimax", label: "MiniMax" },
+  { key: "sub2api", label: "Sub2API" },
   { key: "xai", label: "Grok" },
   { key: "zai", label: "Z.ai" },
 ];
@@ -177,6 +178,7 @@ export function QuotaPageClient() {
       "gemini-cli": 0,
       kimi: 0,
       minimax: 0,
+      sub2api: 0,
       xai: 0,
       zai: 0,
     };
@@ -190,6 +192,7 @@ export function QuotaPageClient() {
         provider === "gemini-cli" ||
         provider === "kimi" ||
         provider === "minimax" ||
+        provider === "sub2api" ||
         provider === "xai" ||
         provider === "zai"
       ) {
@@ -209,6 +212,7 @@ export function QuotaPageClient() {
       selectedProvider === "gemini-cli" ||
       selectedProvider === "kimi" ||
       selectedProvider === "minimax" ||
+      selectedProvider === "sub2api" ||
       selectedProvider === "xai" ||
       selectedProvider === "zai" ||
       sortOption === "default"

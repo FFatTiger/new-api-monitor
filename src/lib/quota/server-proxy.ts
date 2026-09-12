@@ -61,6 +61,11 @@ function getFileIdToken(file: RawAuthFile) {
 }
 
 function getCodexAccountId(file: RawAuthFile): string {
+  const directAccountId = file.chatgpt_account_id ?? file.chatgptAccountId ?? file.account_id ?? file.accountId;
+  if (typeof directAccountId === "string" && directAccountId.trim()) {
+    return directAccountId.trim();
+  }
+
   const payload = parseIdTokenPayload(getFileIdToken(file));
   const accountId = payload?.chatgpt_account_id || payload?.chatgptAccountId;
   if (typeof accountId === "string" && accountId.trim()) {

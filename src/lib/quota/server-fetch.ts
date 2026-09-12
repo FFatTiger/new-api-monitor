@@ -37,8 +37,8 @@ import { buildZaiQuotaData, getZaiKeyForAuthIndex, ZAI_USAGE_URL } from "./zai.t
 
 export type ServerQuotaFetchContext = {
   config: QuotaServerConfig;
+  /** Server-only credential records merged from CPA and Sub2API. */
   rawFiles: RawAuthFile[];
-  fetchFileContent?: (name: string) => Promise<Record<string, unknown> | null>;
   fetchImpl?: typeof fetch;
 };
 
@@ -61,30 +61,33 @@ function optionalRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-async function callManagedQuotaApi(request: QuotaProxyRequest, context: ServerQuotaFetchContext) {
-  if (!context.config.apiBaseUrl || !context.config.apiManagementKey) {
-    throw new Error("Server configuration missing");
-  }
+function directAccessToken(file: RawAuthFile) {
+  const token = file.access_token ?? file.accessToken ?? file.token;
+  return typeof token === "string" && token.trim() ? token.trim() : null;
+}
 
-  const rawFile = findRawAuthFile(context.rawFiles, request.authIndex);
-  const provider = resolveProviderType(rawFile);
-  const fileContent = provider === "antigravity" && context.fetchFileContent ? await context.fetchFileContent(rawFile.name) : null;
-  const apiCall = buildQuotaApiCall(request, rawFile, fileContent);
-  const response = await (context.fetchImpl || fetch)(`${context.config.apiBaseUrl}/api-call`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${context.config.apiManagementKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(apiCall),
-    cache: "no-store",
+function directHeaders(headers: Record<string, string>, file: RawAuthFile) {
+  const token = directAccessToken(file);
+  const entries = Object.entries(headers).map(([name, value]) => {
+    if (!value.includes("$TOKEN$")) return [name, value] as const;
+    if (!token) throw new Error("Missing account access token");
+    return [name, value.replaceAll("$TOKEN$", token)] as const;
   });
+  return Object.fromEntries(entries);
+}
 
-  if (!response.ok) {
-    throw new Error(`Backend request failed: ${response.status}`);
-  }
-
-  return normalizeApiCallEnvelope(await response.json());
+async function callManagedQuotaApi(request: QuotaProxyRequest, context: ServerQuotaFetchContext) {
+  const rawFile = findRawAuthFile(context.rawFiles, request.authIndex);
+  const apiCall = buildQuotaApiCall(request, rawFile, rawFile);
+  const response = await (context.fetchImpl || fetch)(apiCall.url, {
+    method: apiCall.method,
+    headers: directHeaders(apiCall.header, rawFile),
+    body: apiCall.data,
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
+  });
+  const bodyText = await response.text();
+  return normalizeApiCallEnvelope({ statusCode: response.status, body: bodyText });
 }
 
 function codexPlanType(file: AuthFile, payload: Record<string, unknown>) {
@@ -280,26 +283,24 @@ async function fetchAntigravityQuotaOnServer(file: AuthFile, context: ServerQuot
   throw new Error(lastError || "Failed to fetch Antigravity quota");
 }
 
-async function fetchZaiQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
-  const apiKey = getZaiKeyForAuthIndex(file.authIndex, context.config.zaiApiKeys);
-  if (!apiKey) throw new Error("Server configuration missing");
-
-  const response = await (context.fetchImpl || fetch)(ZAI_USAGE_URL, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
+async function fetchZaiQuotaWithKey(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<QuotaData> {
+  const response = await fetchImpl(ZAI_USAGE_URL, {
+    headers: { Authorization: `Bearer ${apiKey}` },
     cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
   });
-
   if (!response.ok) throw new Error(`Backend request failed: ${response.status}`);
   const payload = (await response.json()) as Record<string, unknown>;
-  if (payload.success === false) {
-    throw new Error(normalizeStringValue(payload.msg) || "Z.ai quota request failed");
-  }
-
+  if (payload.success === false) throw new Error(normalizeStringValue(payload.msg) || "Z.ai quota request failed");
   const data = buildZaiQuotaData(payload);
   if (!data.windows?.length) throw new Error("No quota data available");
   return data;
+}
+
+async function fetchZaiQuotaOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
+  const apiKey = getZaiKeyForAuthIndex(file.authIndex, context.config.zaiApiKeys);
+  if (!apiKey) throw new Error("Server configuration missing");
+  return fetchZaiQuotaWithKey(apiKey, context.fetchImpl || fetch);
 }
 
 async function fetchMiniMaxQuotaOnServer(context: ServerQuotaFetchContext): Promise<QuotaData> {
@@ -359,7 +360,9 @@ async function fetchMiniMaxQuotaOnServer(context: ServerQuotaFetchContext): Prom
 }
 
 export async function fetchQuotaForAuthFileOnServer(file: AuthFile, context: ServerQuotaFetchContext): Promise<QuotaData> {
-  const provider = resolveProviderType(file);
+  const sourceProvider = resolveProviderType(file);
+  const rawFile = sourceProvider === "sub2api" ? findRawAuthFile(context.rawFiles, file.authIndex) : null;
+  const provider = rawFile ? resolveProviderType(rawFile) : sourceProvider;
 
   if (provider === "antigravity") return fetchAntigravityQuotaOnServer(file, context);
   if (provider === "claude") return fetchClaudeQuotaOnServer(file, context);
@@ -368,7 +371,14 @@ export async function fetchQuotaForAuthFileOnServer(file: AuthFile, context: Ser
   if (provider === "xai") return fetchGrokQuotaOnServer(file, context);
   if (provider === "kimi") return fetchKimiQuotaOnServer(file, context);
   if (provider === "minimax") return fetchMiniMaxQuotaOnServer(context);
-  if (provider === "zai") return fetchZaiQuotaOnServer(file, context);
+  if (provider === "zai") {
+    if (rawFile) {
+      const apiKey = normalizeStringValue(rawFile.api_key ?? rawFile.apiKey);
+      if (!apiKey) throw new Error("Missing Z.ai API key");
+      return fetchZaiQuotaWithKey(apiKey, context.fetchImpl || fetch);
+    }
+    return fetchZaiQuotaOnServer(file, context);
+  }
 
   throw new Error(`Unsupported provider: ${provider}`);
 }

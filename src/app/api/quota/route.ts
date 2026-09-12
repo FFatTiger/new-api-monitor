@@ -1,247 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { extractProjectId, type RawAuthFile } from "@/lib/quota/auth-files";
-import {
-  getMiniMaxEndpointCandidates,
-  getMiniMaxStatusCode,
-  isMiniMaxAuthIndex,
-  normalizeMiniMaxApiKey,
-  normalizeMiniMaxRegion,
-} from "@/lib/quota/minimax";
-import { buildGrokQuotaDataFromApiCallResults } from "@/lib/quota/grok";
-import { buildQuotaApiCall, findRawAuthFile, type BackendApiCall, type QuotaProxyRequest } from "@/lib/quota/server-proxy";
+import { fetchQuotaForAuthFileOnServer } from "@/lib/quota/server-fetch";
+import { listServerAuthFiles } from "@/lib/quota/server-auth-files";
 import { resolveProviderType } from "@/lib/quota/upstream";
-import { getZaiKeyForAuthIndex, getZaiApiKeysFromEnv, ZAI_USAGE_URL } from "@/lib/quota/zai";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const API_BASE_URL = (process.env.API_BASE_URL || "").replace(/\/+$/, "");
-const API_MANAGEMENT_KEY = process.env.API_MANAGEMENT_KEY || "";
-const ZAI_API_KEYS = getZaiApiKeysFromEnv();
-const MINIMAX_API_KEY = normalizeMiniMaxApiKey(process.env.MINIMAX_API_KEY || process.env.MINIMAX_API_TOKEN || "");
-const MINIMAX_API_REGION = process.env.MINIMAX_API_REGION || "auto";
-const MINIMAX_API_BASE_URL = process.env.MINIMAX_API_BASE_URL || "";
-
-class BackendRequestError extends Error {
-  status: number;
-
-  constructor(status: number) {
-    super("Backend request failed");
-    this.status = status;
-  }
-}
-
-async function fetchRawAuthFiles(): Promise<RawAuthFile[]> {
-  const response = await fetch(`${API_BASE_URL}/auth-files`, {
-    headers: {
-      Authorization: `Bearer ${API_MANAGEMENT_KEY}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    console.error("Failed to fetch auth files for quota proxy", response.status, await response.text());
-    throw new Error("Backend request failed");
-  }
-
-  const data = (await response.json()) as { files?: RawAuthFile[] };
-  return Array.isArray(data.files) ? data.files : [];
-}
-
-async function fetchFileContent(name: string): Promise<Record<string, unknown> | null> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth-files/download?name=${encodeURIComponent(name)}`, {
-      headers: {
-        Authorization: `Bearer ${API_MANAGEMENT_KEY}`,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) return null;
-    return JSON.parse((await response.text()).trim());
-  } catch {
-    return null;
-  }
-}
-
-async function callCliProxyApi(apiCall: BackendApiCall): Promise<unknown> {
-  const response = await fetch(`${API_BASE_URL}/api-call`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${API_MANAGEMENT_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(apiCall),
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    console.error("Failed quota api-call", response.status, text);
-    throw new BackendRequestError(response.status);
-  }
-
-  return response.json();
-}
+type QuotaRequest = { authIndex?: unknown; provider?: unknown };
 
 function publicError(status = 500) {
   return NextResponse.json(
-    { error: "Backend request failed" },
+    { error: "Quota request failed" },
     { status, headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
   );
 }
 
-async function fetchZaiQuota(apiKey: string) {
-  if (!apiKey) {
-    return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
-  }
-
-  const response = await fetch(ZAI_USAGE_URL, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    console.error("Failed Z.ai quota request", response.status);
-    return publicError(response.status);
-  }
-
-  try {
-    const data = await response.json();
-    return NextResponse.json(data, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
-  } catch (error: unknown) {
-    console.error("Failed to parse Z.ai quota response", error);
-    return publicError();
-  }
-}
-
-async function fetchMiniMaxQuota() {
-  if (!MINIMAX_API_KEY) {
-    return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
-  }
-
-  const endpoints = getMiniMaxEndpointCandidates(normalizeMiniMaxRegion(MINIMAX_API_REGION), MINIMAX_API_BASE_URL);
-  let lastPayload: Record<string, unknown> | null = null;
-  let lastStatus = 500;
-
-  for (const endpoint of endpoints) {
-    try {
-      const response = await fetch(endpoint.url, {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${MINIMAX_API_KEY}`,
-        },
-        cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
-      });
-
-      if (!response.ok) {
-        lastStatus = response.status;
-        lastPayload = {
-          base_resp: {
-            status_code: response.status,
-            status_msg: `HTTP ${response.status}`,
-          },
-          endpointRegion: endpoint.region,
-        };
-        console.error("Failed MiniMax quota request", endpoint.region, response.status);
-        continue;
-      }
-
-      const payload = (await response.json()) as Record<string, unknown>;
-      const enrichedPayload = { ...payload, endpointRegion: endpoint.region };
-      lastPayload = enrichedPayload;
-
-      const statusCode = getMiniMaxStatusCode(payload);
-      if (statusCode === 0) {
-        return NextResponse.json(enrichedPayload, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
-      }
-
-      if (statusCode !== 1004 || endpoints.length === 1) {
-        return NextResponse.json(enrichedPayload, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
-      }
-    } catch (error: unknown) {
-      lastPayload = {
-        base_resp: {
-          status_code: -1,
-          status_msg: "request failed",
-        },
-        endpointRegion: endpoint.region,
-      };
-      console.error("Failed MiniMax quota request", endpoint.region, error);
-    }
-  }
-
-  if (lastPayload) {
-    return NextResponse.json(lastPayload, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
-  }
-
-  return publicError(lastStatus);
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as QuotaProxyRequest;
-    const requestedProvider = resolveProviderType({ type: body.provider });
+    const body = (await request.json()) as QuotaRequest;
+    const authIndex = String(body.authIndex ?? "").trim();
+    if (!authIndex) return publicError(400);
 
-    if (requestedProvider === "zai") {
-      if (ZAI_API_KEYS.length === 0) {
-        return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
-      }
-
-      const zaiApiKey = getZaiKeyForAuthIndex(body.authIndex, ZAI_API_KEYS);
-      if (!zaiApiKey) {
-        return publicError(400);
-      }
-
-      return fetchZaiQuota(zaiApiKey);
+    const { files, rawFiles, config } = await listServerAuthFiles();
+    const file = files.find((candidate) => candidate.authIndex === authIndex);
+    if (!file || resolveProviderType(file) !== resolveProviderType({ type: body.provider })) {
+      return publicError(400);
     }
 
-    if (requestedProvider === "minimax") {
-      if (!isMiniMaxAuthIndex(body.authIndex)) {
-        return publicError(400);
-      }
-
-      return fetchMiniMaxQuota();
-    }
-
-    if (!API_BASE_URL || !API_MANAGEMENT_KEY) {
-      return NextResponse.json({ error: "Server configuration missing" }, { status: 500 });
-    }
-
-    const files = await fetchRawAuthFiles();
-
-    if (requestedProvider === "xai") {
-      const file = findRawAuthFile(files, body.authIndex);
-      if (resolveProviderType(file) !== "xai") {
-        return publicError(400);
-      }
-
-      const [weeklyResult, monthlyResult] = await Promise.allSettled([
-        callCliProxyApi(buildQuotaApiCall({ authIndex: body.authIndex, provider: "xai", action: "xai-weekly" }, file)),
-        callCliProxyApi(buildQuotaApiCall({ authIndex: body.authIndex, provider: "xai", action: "xai-monthly" }, file)),
-      ]);
-      const data = buildGrokQuotaDataFromApiCallResults(weeklyResult, monthlyResult);
-      return NextResponse.json(data, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
-    }
-
-    const file = findRawAuthFile(files, body.authIndex);
-    const fileContent = resolveProviderType(file) === "antigravity" ? await fetchFileContent(file.name) : null;
-    const apiCall = buildQuotaApiCall(body, file, fileContent);
-
-    if (resolveProviderType(file) === "antigravity" && fileContent && !extractProjectId(fileContent)) {
-      console.warn("Antigravity auth file did not contain a project id", file.name);
-    }
-
-    const data = await callCliProxyApi(apiCall);
+    const data = await fetchQuotaForAuthFileOnServer(file, { config, rawFiles });
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } });
-  } catch (error: unknown) {
-    console.error("Failed to proxy quota request", error);
-    return publicError(error instanceof BackendRequestError ? error.status : 500);
+  } catch (error) {
+    console.error("Failed direct quota request", error);
+    return publicError();
   }
 }
