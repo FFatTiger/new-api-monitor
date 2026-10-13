@@ -102,30 +102,34 @@ export function magpieQuotaData(cards: unknown, provider: string, user: string):
   return { groups };
 }
 
-const FIVE_HOURS_SECONDS = 5 * 60 * 60;
-
 function magpieAccountWindows(windows: MagpieQuotaWindow[]) {
-  const hasPoolWindow = windows.some((windowInfo) => stringValue(windowInfo.pool) && !stringValue(windowInfo.family));
-  return windows.flatMap((windowInfo) => {
+  const pools = new Map<string, { label: string; used: number; resetTime?: unknown }>();
+  for (const windowInfo of windows) {
     const pool = stringValue(windowInfo.pool);
     const name = stringValue(windowInfo.name);
+    const used = typeof windowInfo.used === "number" ? windowInfo.used : Number.NaN;
+    if (!pool || stringValue(windowInfo.family) || !name || !Number.isFinite(used)) continue;
+    const label = `${pool} \u00b7 ${name}`;
+    const current = pools.get(label);
+    if (!current || used > current.used) pools.set(label, { label, used, resetTime: windowInfo.resetsAt });
+  }
+  if (pools.size) return [...pools.values()].map((windowInfo) => magpieWindow(windowInfo.label, windowInfo.used, windowInfo.resetTime));
+
+  const families = new Map<string, { label: string; used: number; resetTime?: unknown }>();
+  for (const windowInfo of windows) {
     const family = stringValue(windowInfo.family);
     const used = typeof windowInfo.used === "number" ? windowInfo.used : Number.NaN;
-    if (!name || !Number.isFinite(used)) return [];
-    if (!pool) return [magpieWindow(name, used, windowInfo.resetsAt)];
-    if (!family) return [magpieWindow(`${pool} \u00b7 ${name}`, used, windowInfo.resetsAt)];
-    if (!hasPoolWindow) return [magpieWindow(name, used, windowInfo.resetsAt)];
-    const span = windowSpan(windowInfo.resetSecs, Boolean(family));
-    const covered = windows.some((candidate) => {
-      return stringValue(candidate.pool) === pool && !stringValue(candidate.family) && windowSpan(candidate.resetSecs, false) === span;
-    });
-    return covered ? [] : [magpieWindow(name, used, windowInfo.resetsAt)];
-  });
+    if (!family || !Number.isFinite(used)) continue;
+    const label = `${family} \u00b7 ${windowLength(windowInfo.resetSecs)}`;
+    const current = families.get(label);
+    if (!current || used > current.used) families.set(label, { label, used, resetTime: windowInfo.resetsAt });
+  }
+  return [...families.values()].map((windowInfo) => magpieWindow(windowInfo.label, windowInfo.used, windowInfo.resetTime));
 }
 
-function windowSpan(value: unknown, modelWindow: boolean) {
+function windowLength(value: unknown) {
   const seconds = typeof value === "number" ? value : Number.NaN;
-  return Number.isFinite(seconds) ? seconds : modelWindow ? FIVE_HOURS_SECONDS : 0;
+  return Number.isFinite(seconds) && seconds > 24 * 60 * 60 ? "7 days" : "5 hours";
 }
 
 function magpieWindow(label: string, used: number, resetValue: unknown) {

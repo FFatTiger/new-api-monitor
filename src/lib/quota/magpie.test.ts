@@ -79,14 +79,16 @@ describe("Magpie credential source", () => {
     );
   });
 
-  it("keeps model windows when an account has no shared pool", () => {
+  it("collapses model windows into one row per family when an account has no shared pool", () => {
     const data = magpieQuotaData([
       {
         provider: "antigravity",
         user: "person@gmail.com",
         windows: [
           { family: "Claude", name: "Claude Opus 4.6 (Thinking)", used: 12, resetSecs: 17_999, resetsAt: "2026-10-13T19:01:53Z" },
+          { family: "Claude", name: "Claude Sonnet 4.6 (Thinking)", used: 4, resetSecs: 17_999, resetsAt: "2026-10-13T19:01:53Z" },
           { family: "Gemini", name: "Gemini 3 Flash", used: 0, resetSecs: 17_999, resetsAt: "2026-10-13T19:01:53Z" },
+          { family: "Gemini", name: "Gemini 3.5 Flash", used: 8, resetSecs: 17_999, resetsAt: "2026-10-13T19:01:53Z" },
         ],
       },
     ], "antigravity", "person@gmail.com");
@@ -94,27 +96,28 @@ describe("Magpie credential source", () => {
     assert.deepEqual(
       data.groups?.map((group) => [group.label, group.remainingFraction]),
       [
-        ["Claude Opus 4.6 (Thinking)", 0.88],
-        ["Gemini 3 Flash", 1],
+        ["Claude \u00b7 5 hours", 0.88],
+        ["Gemini \u00b7 5 hours", 0.92],
       ],
     );
   });
 
-  it("keeps a model window whose span has no shared pool window", () => {
+  it("shows only the shared pools when an account has them", () => {
     const data = magpieQuotaData([
       {
         provider: "antigravity",
         user: "person@gmail.com",
         windows: [
-          { pool: "Gemini", family: "Gemini", name: "Gemini 3 Flash", used: 8, resetSecs: 17_999 },
+          { pool: "Gemini", family: "Gemini", name: "Gemini 3 Flash", used: 30, resetSecs: 17_999 },
           { pool: "Gemini", name: "7 days", used: 4, resetSecs: 700_000 },
+          { pool: "Gemini", name: "5 hours", used: 30, resetSecs: 17_999 },
         ],
       },
     ], "antigravity", "person@gmail.com");
 
     assert.deepEqual(
       data.groups?.map((group) => group.label),
-      ["Gemini 3 Flash", "Gemini \u00b7 7 days"],
+      ["Gemini \u00b7 7 days", "Gemini \u00b7 5 hours"],
     );
   });
 });
