@@ -86,6 +86,7 @@ type MagpieQuotaCard = {
 type MagpieQuotaWindow = {
   name?: unknown;
   pool?: unknown;
+  family?: unknown;
   used?: unknown;
   resetsAt?: unknown;
 };
@@ -98,8 +99,9 @@ export function magpieQuotaData(cards: unknown, provider: string, user: string):
   const groups = windows.flatMap((windowInfo) => {
     const pool = stringValue(windowInfo.pool);
     const name = stringValue(windowInfo.name);
+    const family = stringValue(windowInfo.family);
     const used = typeof windowInfo.used === "number" ? windowInfo.used : Number.NaN;
-    if (!pool || !name || !Number.isFinite(used)) return [];
+    if (family || !pool || !name || !Number.isFinite(used)) return [];
     const label = `${pool} \u00b7 ${name}`;
     const resetTime = stringValue(windowInfo.resetsAt);
     return [{

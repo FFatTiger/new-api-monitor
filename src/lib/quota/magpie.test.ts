@@ -59,17 +59,22 @@ describe("Magpie credential source", () => {
         windows: [
           { pool: "Gemini", name: "7 days", used: 4.44573, resetsAt: "2026-10-17T15:34:29Z" },
           { pool: "Gemini", name: "5 hours", used: 0, resetsAt: "2026-10-13T12:17:46Z" },
-          { name: "Claude Opus 5.5 (High)", used: 0.0128, family: "Claude" },
+          { pool: "Claude & GPT", name: "7 days", used: 0.0064, resetsAt: "2026-10-20T06:04:50Z" },
+          { pool: "Claude & GPT", name: "5 hours", used: 0.0128, resetsAt: "2026-10-13T11:04:50Z" },
+          { pool: "Gemini", name: "Gemini 3 Flash", family: "Gemini", used: 20, resetsAt: "2026-10-13T12:17:46Z" },
         ],
       },
       { provider: "codex", user: "other@example.com", windows: [] },
     ], "antigravity", "person@gmail.com");
 
+    assert.equal(data.groups?.length, 4);
     assert.deepEqual(
       data.groups?.map((group) => [group.label, group.remainingFraction, group.resetTime]),
       [
         ["Gemini \u00b7 7 days", (100 - 4.44573) / 100, "2026-10-17T15:34:29Z"],
         ["Gemini \u00b7 5 hours", 1, "2026-10-13T12:17:46Z"],
+        ["Claude & GPT \u00b7 7 days", (100 - 0.0064) / 100, "2026-10-20T06:04:50Z"],
+        ["Claude & GPT \u00b7 5 hours", (100 - 0.0128) / 100, "2026-10-13T11:04:50Z"],
       ],
     );
   });
