@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 
 import {
   buildAntigravityQuotaGroups,
+  buildAntigravityQuotaSummaryGroups,
   buildCodexQuotaWindows,
   getCodexPlanLabel,
   normalizeCodexPlanType,
@@ -97,6 +98,37 @@ describe("upstream quota compatibility", () => {
         ["gemini-3-1-pro-series", "Gemini 3.1 Pro Series", 0.4],
         ["gemini-3-flash", "Gemini 3 Flash", 0.8],
         ["gemini-image", "Gemini Image", 0.3],
+      ],
+    );
+  });
+
+  it("uses Antigravity's shared 7-day and 5-hour pools", () => {
+    const groups = buildAntigravityQuotaSummaryGroups({
+      groups: [
+        {
+          displayName: "Gemini Models",
+          buckets: [
+            { window: "weekly", remainingFraction: 0.9555427, resetTime: "2026-10-17T15:34:29Z" },
+            { window: "5h", remainingFraction: 1, resetTime: "2026-10-13T11:26:50Z" },
+          ],
+        },
+        {
+          displayName: "Claude and GPT models",
+          buckets: [
+            { window: "weekly", remainingFraction: 0.999936, resetTime: "2026-10-20T06:04:50Z" },
+            { window: "5h", remainingFraction: 0.999872, resetTime: "2026-10-13T11:04:50Z" },
+          ],
+        },
+      ],
+    });
+
+    assert.deepEqual(
+      groups.map((group) => [group.id, group.label, group.remainingFraction, group.resetTime]),
+      [
+        ["gemini-7-days", "Gemini \u00b7 7 days", 0.9555427, "2026-10-17T15:34:29Z"],
+        ["gemini-5-hours", "Gemini \u00b7 5 hours", 1, "2026-10-13T11:26:50Z"],
+        ["claude-gpt-7-days", "Claude & GPT \u00b7 7 days", 0.999936, "2026-10-20T06:04:50Z"],
+        ["claude-gpt-5-hours", "Claude & GPT \u00b7 5 hours", 0.999872, "2026-10-13T11:04:50Z"],
       ],
     );
   });

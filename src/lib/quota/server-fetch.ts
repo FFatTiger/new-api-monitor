@@ -21,6 +21,7 @@ import type { QuotaServerConfig } from "./server-auth-files.ts";
 import { buildGrokQuotaDataFromApiCallResults } from "./grok.ts";
 import {
   buildAntigravityQuotaGroups,
+  buildAntigravityQuotaSummaryGroups,
   buildClaudeQuotaWindows,
   buildCodexQuotaWindows,
   buildGeminiCliQuotaBuckets,
@@ -271,9 +272,21 @@ async function fetchAntigravityQuotaOnServer(file: AuthFile, context: ServerQuot
         continue;
       }
 
+      const modelGroups = buildAntigravityQuotaGroups(models as Parameters<typeof buildAntigravityQuotaGroups>[0]);
+      let groups = modelGroups;
+      try {
+        const summary = ensureSuccessfulEnvelope(
+          await fetchManagedProviderAction(file, "antigravity", context, "antigravity-quota-summary"),
+        );
+        const summaryGroups = buildAntigravityQuotaSummaryGroups(parseJsonMaybe(summary.body ?? summary.bodyText));
+        if (summaryGroups.length) groups = summaryGroups;
+      } catch {
+        groups = modelGroups;
+      }
+
       return {
         ...payload,
-        groups: buildAntigravityQuotaGroups(models as Parameters<typeof buildAntigravityQuotaGroups>[0]),
+        groups,
       };
     } catch (error: unknown) {
       lastError = error instanceof Error ? error.message : String(error);

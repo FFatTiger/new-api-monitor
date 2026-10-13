@@ -124,6 +124,8 @@ export const ANTIGRAVITY_QUOTA_URLS = [
   "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
 ] as const;
 
+export const ANTIGRAVITY_QUOTA_SUMMARY_URL = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary";
+
 export const ANTIGRAVITY_REQUEST_HEADERS = {
   Authorization: "Bearer $TOKEN$",
   "Content-Type": "application/json",
@@ -614,6 +616,61 @@ export function buildAntigravityQuotaGroups(models: Record<string, AntigravityQu
   appendGroup("gemini-image", geminiProResetTime);
 
   return groups;
+}
+
+type AntigravitySummaryBucket = {
+  window?: unknown;
+  remainingFraction?: unknown;
+  resetTime?: unknown;
+  disabled?: unknown;
+};
+
+type AntigravitySummaryGroup = {
+  displayName?: unknown;
+  buckets?: unknown;
+};
+
+function antigravityPoolName(value: unknown) {
+  const name = normalizeStringValue(value);
+  if (!name) return "";
+  const trimmed = name.toLowerCase().endsWith(" models") ? name.slice(0, -" models".length).trim() : name;
+  return trimmed.replaceAll(" and ", " & ");
+}
+
+function antigravitySummaryWindow(value: unknown) {
+  const windowName = normalizeStringValue(value)?.toLowerCase();
+  if (windowName === "weekly") return { id: "7-days", label: "7 days" };
+  if (windowName === "5h") return { id: "5-hours", label: "5 hours" };
+  return null;
+}
+
+export function buildAntigravityQuotaSummaryGroups(payload: unknown): AntigravityQuotaGroup[] {
+  const record = payload && typeof payload === "object" && !Array.isArray(payload) ? payload as GenericRecord : {};
+  const groups = Array.isArray(record.groups) ? record.groups as AntigravitySummaryGroup[] : [];
+  const result: AntigravityQuotaGroup[] = [];
+
+  for (const group of groups) {
+    const pool = antigravityPoolName(group.displayName);
+    const buckets = Array.isArray(group.buckets) ? group.buckets as AntigravitySummaryBucket[] : [];
+    if (!pool) continue;
+
+    for (const bucket of buckets) {
+      if (bucket.disabled === true) continue;
+      const windowInfo = antigravitySummaryWindow(bucket.window);
+      const remainingFraction = normalizeQuotaFraction(bucket.remainingFraction);
+      if (!windowInfo || remainingFraction === null) continue;
+      const resetTime = typeof bucket.resetTime === "string" || typeof bucket.resetTime === "number" ? bucket.resetTime : undefined;
+      result.push({
+        id: `${pool.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, "")}-${windowInfo.id}`,
+        label: `${pool} \u00b7 ${windowInfo.label}`,
+        models: [],
+        remainingFraction,
+        resetTime,
+      });
+    }
+  }
+
+  return result;
 }
 
 export function normalizeGeminiCliModelId(value: unknown): string | null {

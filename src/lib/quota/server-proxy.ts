@@ -3,6 +3,7 @@ import type { RawAuthFile } from "./auth-files.ts";
 import { extractProjectId, normalizeAuthIndex } from "./auth-files.ts";
 import { parseIdTokenPayload } from "./parse-id-token.ts";
 import {
+  ANTIGRAVITY_QUOTA_SUMMARY_URL,
   ANTIGRAVITY_QUOTA_URLS,
   ANTIGRAVITY_REQUEST_HEADERS,
   CLAUDE_PROFILE_URL,
@@ -23,6 +24,7 @@ import {
 
 export type QuotaProxyAction =
   | "quota"
+  | "antigravity-quota-summary"
   | "antigravity-project-id"
   | "claude-usage"
   | "claude-profile"
@@ -99,6 +101,7 @@ function getRequestedAction(request: QuotaProxyRequest): QuotaProxyAction {
   const action = stringValue(request.action);
   if (
     action === "quota" ||
+    action === "antigravity-quota-summary" ||
     action === "antigravity-project-id" ||
     action === "claude-usage" ||
     action === "claude-profile" ||
@@ -148,7 +151,7 @@ export function buildQuotaApiCall(
   const action = getRequestedAction(request);
 
   if (provider === "antigravity") {
-    if (action !== "quota" && action !== "antigravity-project-id") {
+    if (action !== "quota" && action !== "antigravity-quota-summary" && action !== "antigravity-project-id") {
       throw new Error("Unsupported quota action");
     }
 
@@ -157,7 +160,7 @@ export function buildQuotaApiCall(
     return {
       authIndex,
       method: "POST",
-      url: ANTIGRAVITY_QUOTA_URLS[0],
+      url: action === "antigravity-quota-summary" ? ANTIGRAVITY_QUOTA_SUMMARY_URL : ANTIGRAVITY_QUOTA_URLS[0],
       header: { ...ANTIGRAVITY_REQUEST_HEADERS },
       data: action === "antigravity-project-id" ? JSON.stringify({ projectId: project }) : JSON.stringify({ project }),
     };
