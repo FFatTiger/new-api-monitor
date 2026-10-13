@@ -46,7 +46,6 @@ export function magpieCredentialFile(login: MagpieLogin): { file: AuthFile; raw:
   const user = stringValue(login.user);
   const raw: MagpieCredentialFile = {
     access_token: accessToken,
-    refresh_token: stringValue(auth?.refresh_token) || undefined,
     project_id: projectId || undefined,
     name: `${provider}-${user || id}`,
     type: provider,
@@ -86,7 +85,8 @@ type MagpieQuotaCard = {
 
 type MagpieQuotaWindow = {
   name?: unknown;
-  remaining?: unknown;
+  pool?: unknown;
+  used?: unknown;
   resetsAt?: unknown;
 };
 
@@ -96,15 +96,17 @@ export function magpieQuotaData(cards: unknown, provider: string, user: string):
   });
   const windows = Array.isArray(account?.windows) ? account.windows as MagpieQuotaWindow[] : [];
   const groups = windows.flatMap((windowInfo) => {
-    const label = stringValue(windowInfo.name);
-    const remaining = typeof windowInfo.remaining === "number" ? windowInfo.remaining : Number.NaN;
-    if (!label || !Number.isFinite(remaining)) return [];
+    const pool = stringValue(windowInfo.pool);
+    const name = stringValue(windowInfo.name);
+    const used = typeof windowInfo.used === "number" ? windowInfo.used : Number.NaN;
+    if (!pool || !name || !Number.isFinite(used)) return [];
+    const label = `${pool} \u00b7 ${name}`;
     const resetTime = stringValue(windowInfo.resetsAt);
     return [{
       id: label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, ""),
       label,
       models: [],
-      remainingFraction: remaining / 100,
+      remainingFraction: (100 - used) / 100,
       resetTime: resetTime || undefined,
     }];
   });

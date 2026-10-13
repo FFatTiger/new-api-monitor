@@ -44,6 +44,7 @@ describe("Magpie credential source", () => {
       ["magpie-474d640084fd9a24", "antigravity", "aicode-consumers", "Google AI Pro"],
     ]);
     assert.equal(result.rawFiles[0]?.access_token, "secret-access-token");
+    assert.equal(result.rawFiles[0]?.refresh_token, undefined);
     assert.equal(result.rawFiles[0]?.project_id, "aicode-consumers");
     assert.equal(JSON.stringify(result.files).includes("secret-access-token"), false);
     assert.equal(JSON.stringify(result.files).includes("secret-refresh-token"), false);
@@ -56,8 +57,9 @@ describe("Magpie credential source", () => {
         provider: "antigravity",
         user: "person@gmail.com",
         windows: [
-          { name: "Gemini \u00b7 7 days", remaining: 95.55427, resetsAt: "2026-10-17T15:34:29Z" },
-          { name: "Gemini \u00b7 5 hours", remaining: 100, resetsAt: "2026-10-13T12:17:46Z" },
+          { pool: "Gemini", name: "7 days", used: 4.44573, resetsAt: "2026-10-17T15:34:29Z" },
+          { pool: "Gemini", name: "5 hours", used: 0, resetsAt: "2026-10-13T12:17:46Z" },
+          { name: "Claude Opus 5.5 (High)", used: 0.0128, family: "Claude" },
         ],
       },
       { provider: "codex", user: "other@example.com", windows: [] },
@@ -66,7 +68,7 @@ describe("Magpie credential source", () => {
     assert.deepEqual(
       data.groups?.map((group) => [group.label, group.remainingFraction, group.resetTime]),
       [
-        ["Gemini \u00b7 7 days", 95.55427 / 100, "2026-10-17T15:34:29Z"],
+        ["Gemini \u00b7 7 days", (100 - 4.44573) / 100, "2026-10-17T15:34:29Z"],
         ["Gemini \u00b7 5 hours", 1, "2026-10-13T12:17:46Z"],
       ],
     );
