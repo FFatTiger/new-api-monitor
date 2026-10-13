@@ -102,37 +102,33 @@ export function magpieQuotaData(cards: unknown, provider: string, user: string):
   return { groups };
 }
 
+const FIVE_HOURS_SECONDS = 5 * 60 * 60;
+
 function magpieAccountWindows(windows: MagpieQuotaWindow[]) {
-  const pooled = windows.flatMap((windowInfo) => {
+  const hasPoolWindow = windows.some((windowInfo) => stringValue(windowInfo.pool) && !stringValue(windowInfo.family));
+  return windows.flatMap((windowInfo) => {
     const pool = stringValue(windowInfo.pool);
     const name = stringValue(windowInfo.name);
-    const used = typeof windowInfo.used === "number" ? windowInfo.used : Number.NaN;
-    if (stringValue(windowInfo.family) || !pool || !name || !Number.isFinite(used)) return [];
-    return [magpieWindow(pool, name, used, windowInfo.resetsAt)];
-  });
-  if (pooled.length) return pooled;
-
-  const grouped = new Map<string, { pool: string; name: string; used: number; resetTime?: unknown }>();
-  for (const windowInfo of windows) {
     const family = stringValue(windowInfo.family);
     const used = typeof windowInfo.used === "number" ? windowInfo.used : Number.NaN;
-    if (!family || !Number.isFinite(used)) continue;
-    const pool = family === "Gemini" ? "Gemini" : "Claude & GPT";
-    const name = windowNameFromReset(windowInfo.resetSecs);
-    const key = `${pool}\u0000${name}`;
-    const current = grouped.get(key);
-    if (!current || used > current.used) grouped.set(key, { pool, name, used, resetTime: windowInfo.resetsAt });
-  }
-  return [...grouped.values()].map((windowInfo) => magpieWindow(windowInfo.pool, windowInfo.name, windowInfo.used, windowInfo.resetTime));
+    if (!name || !Number.isFinite(used)) return [];
+    if (!pool) return [magpieWindow(name, used, windowInfo.resetsAt)];
+    if (!family) return [magpieWindow(`${pool} \u00b7 ${name}`, used, windowInfo.resetsAt)];
+    if (!hasPoolWindow) return [magpieWindow(name, used, windowInfo.resetsAt)];
+    const span = windowSpan(windowInfo.resetSecs, Boolean(family));
+    const covered = windows.some((candidate) => {
+      return stringValue(candidate.pool) === pool && !stringValue(candidate.family) && windowSpan(candidate.resetSecs, false) === span;
+    });
+    return covered ? [] : [magpieWindow(name, used, windowInfo.resetsAt)];
+  });
 }
 
-function windowNameFromReset(value: unknown) {
+function windowSpan(value: unknown, modelWindow: boolean) {
   const seconds = typeof value === "number" ? value : Number.NaN;
-  return Number.isFinite(seconds) && seconds > 24 * 60 * 60 ? "7 days" : "5 hours";
+  return Number.isFinite(seconds) ? seconds : modelWindow ? FIVE_HOURS_SECONDS : 0;
 }
 
-function magpieWindow(pool: string, name: string, used: number, resetValue: unknown) {
-  const label = `${pool} \u00b7 ${name}`;
+function magpieWindow(label: string, used: number, resetValue: unknown) {
   const resetTime = stringValue(resetValue);
   return {
     id: label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, ""),
