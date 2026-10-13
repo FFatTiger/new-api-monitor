@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { AuthFile } from "../../types/auth.ts";
+import type { QuotaData } from "../../types/quota.ts";
 
 import { sanitizeAuthFile, type RawAuthFile } from "./auth-files.ts";
 import { resolveProviderType } from "./upstream.ts";
@@ -52,6 +53,7 @@ export function magpieCredentialFile(login: MagpieLogin): { file: AuthFile; raw:
     provider,
     authIndex: accountIndex(id),
     planType: stringValue(login.plan) || undefined,
+    user,
     source: "magpie",
     sourceAccountId: id,
   };
@@ -74,4 +76,38 @@ export async function readMagpieCredentialFiles(
 
 export function getMagpieConfigDir(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env) {
   return (env.MAGPIE_CONFIG_DIR || "").trim();
+}
+
+type MagpieQuotaCard = {
+  provider?: unknown;
+  user?: unknown;
+  windows?: unknown;
+};
+
+type MagpieQuotaWindow = {
+  name?: unknown;
+  remaining?: unknown;
+  resetsAt?: unknown;
+};
+
+export function magpieQuotaData(cards: unknown, provider: string, user: string): QuotaData {
+  const account = (Array.isArray(cards) ? cards as MagpieQuotaCard[] : []).find((card) => {
+    return stringValue(card.provider).toLowerCase() === provider.toLowerCase() && stringValue(card.user).toLowerCase() === user.toLowerCase();
+  });
+  const windows = Array.isArray(account?.windows) ? account.windows as MagpieQuotaWindow[] : [];
+  const groups = windows.flatMap((windowInfo) => {
+    const label = stringValue(windowInfo.name);
+    const remaining = typeof windowInfo.remaining === "number" ? windowInfo.remaining : Number.NaN;
+    if (!label || !Number.isFinite(remaining)) return [];
+    const resetTime = stringValue(windowInfo.resetsAt);
+    return [{
+      id: label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replaceAll(/^-|-$/g, ""),
+      label,
+      models: [],
+      remainingFraction: remaining / 100,
+      resetTime: resetTime || undefined,
+    }];
+  });
+  if (!groups.length) throw new Error("Magpie has not read this account's quota");
+  return { groups };
 }

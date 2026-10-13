@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import { readMagpieCredentialFiles } from "./magpie.ts";
+import { magpieQuotaData, readMagpieCredentialFiles } from "./magpie.ts";
 
 describe("Magpie credential source", () => {
   it("maps enabled subscription logins into server-only credential files", async () => {
@@ -48,5 +48,27 @@ describe("Magpie credential source", () => {
     assert.equal(JSON.stringify(result.files).includes("secret-access-token"), false);
     assert.equal(JSON.stringify(result.files).includes("secret-refresh-token"), false);
     assert.equal(JSON.stringify(result.files).includes("person@gmail.com"), false);
+  });
+
+  it("uses the quota windows Magpie already read", () => {
+    const data = magpieQuotaData([
+      {
+        provider: "antigravity",
+        user: "person@gmail.com",
+        windows: [
+          { name: "Gemini \u00b7 7 days", remaining: 95.55427, resetsAt: "2026-10-17T15:34:29Z" },
+          { name: "Gemini \u00b7 5 hours", remaining: 100, resetsAt: "2026-10-13T12:17:46Z" },
+        ],
+      },
+      { provider: "codex", user: "other@example.com", windows: [] },
+    ], "antigravity", "person@gmail.com");
+
+    assert.deepEqual(
+      data.groups?.map((group) => [group.label, group.remainingFraction, group.resetTime]),
+      [
+        ["Gemini \u00b7 7 days", 95.55427 / 100, "2026-10-17T15:34:29Z"],
+        ["Gemini \u00b7 5 hours", 1, "2026-10-13T12:17:46Z"],
+      ],
+    );
   });
 });

@@ -1,7 +1,11 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+
 import type { AuthFile } from "../../types/auth.ts";
 import type { QuotaData } from "../../types/quota.ts";
 
 import type { RawAuthFile } from "./auth-files.ts";
+import { magpieQuotaData } from "./magpie.ts";
 import { buildKimiQuotaRows } from "./kimi.ts";
 import {
   buildMiniMaxQuotaData,
@@ -378,6 +382,12 @@ export async function fetchQuotaForAuthFileOnServer(file: AuthFile, context: Ser
   const rawFile = context.rawFiles.find((candidate) => String(candidate.authIndex ?? candidate.auth_index) === file.authIndex) ?? null;
   const provider = rawFile ? resolveProviderType(rawFile) : resolveProviderType(file);
 
+  if (rawFile?.source === "magpie") {
+    const user = typeof rawFile.user === "string" ? rawFile.user : "";
+    const payload = JSON.parse(await readFile(path.join(context.config.magpieConfigDir, "quotas.json"), "utf8")) as Record<string, { quota?: unknown }>;
+    const cards = Object.values(payload).map((entry) => entry?.quota).filter(Boolean);
+    return magpieQuotaData(cards, provider, user);
+  }
   if (provider === "antigravity") return fetchAntigravityQuotaOnServer(file, context);
   if (provider === "claude") return fetchClaudeQuotaOnServer(file, context);
   if (provider === "codex") return fetchCodexQuotaOnServer(file, context);
