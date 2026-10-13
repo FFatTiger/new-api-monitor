@@ -37,7 +37,7 @@ import { buildZaiQuotaData, getZaiKeyForAuthIndex, ZAI_USAGE_URL } from "./zai.t
 
 export type ServerQuotaFetchContext = {
   config: QuotaServerConfig;
-  /** Server-only credential records merged from CPA and Sub2API. */
+  /** Server-only credential records merged from CPA, Sub2API, and Magpie. */
   rawFiles: RawAuthFile[];
   fetchImpl?: typeof fetch;
 };

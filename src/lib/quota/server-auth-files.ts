@@ -7,6 +7,7 @@ import {
   sanitizeAuthFile,
   type RawAuthFile,
 } from "./auth-files.ts";
+import { getMagpieConfigDir, readMagpieCredentialFiles } from "./magpie.ts";
 import { fetchSub2ApiCredentialFiles, getSub2ApiConfig, type Sub2ApiConfig } from "./sub2api.ts";
 import { getZaiApiKeysFromEnv } from "./zai.ts";
 
@@ -18,6 +19,7 @@ export type QuotaServerConfig = {
   miniMaxApiRegion: string;
   miniMaxApiBaseUrl: string;
   sub2api: Sub2ApiConfig;
+  magpieConfigDir: string;
 };
 
 export type ServerAuthFileList = {
@@ -36,6 +38,7 @@ export function getQuotaServerConfig(env: NodeJS.ProcessEnv = process.env): Quot
     miniMaxApiRegion: env.MINIMAX_API_REGION || "auto",
     miniMaxApiBaseUrl: env.MINIMAX_API_BASE_URL || "",
     sub2api: getSub2ApiConfig(env),
+    magpieConfigDir: getMagpieConfigDir(env),
   };
 }
 
@@ -75,16 +78,18 @@ export async function listServerAuthFiles(fetchImpl: typeof fetch = fetch): Prom
   const runtimeFiles = buildRuntimeAuthFiles(config);
   const hasCpa = Boolean(config.apiBaseUrl && config.apiManagementKey);
 
-  const [cpaResult, sub2Result] = await Promise.allSettled([
+  const [cpaResult, sub2Result, magpieResult] = await Promise.allSettled([
     hasCpa ? fetchBackendAuthFiles(config, fetchImpl) : Promise.resolve([] as RawAuthFile[]),
     fetchSub2ApiCredentialFiles(config.sub2api, fetchImpl),
+    config.magpieConfigDir ? readMagpieCredentialFiles(config.magpieConfigDir) : Promise.resolve({ files: [], rawFiles: [] }),
   ]);
 
-  if (cpaResult.status === "rejected" && !runtimeFiles.length && sub2Result.status === "rejected") {
+  if (cpaResult.status === "rejected" && !runtimeFiles.length && sub2Result.status === "rejected" && magpieResult.status === "rejected") {
     throw cpaResult.reason;
   }
   if (cpaResult.status === "rejected") console.error("Failed to list CPA auth files", cpaResult.reason);
   if (sub2Result.status === "rejected") console.error("Failed to list Sub2API accounts", sub2Result.reason);
+  if (magpieResult.status === "rejected") console.error("Failed to list Magpie accounts", magpieResult.reason);
 
   const cpaFiles = cpaResult.status === "fulfilled" ? cpaResult.value : [];
   const cpaAccounts = await Promise.all(cpaFiles.map(async (file) => {
@@ -96,10 +101,11 @@ export async function listServerAuthFiles(fetchImpl: typeof fetch = fetch): Prom
     return { file: sanitizeAuthFile(file, projectId), raw: credentialFile };
   }));
   const sub2 = sub2Result.status === "fulfilled" ? sub2Result.value : { files: [], rawFiles: [] };
+  const magpie = magpieResult.status === "fulfilled" ? magpieResult.value : { files: [], rawFiles: [] };
 
   return {
-    files: [...cpaAccounts.map((account) => account.file), ...sub2.files, ...runtimeFiles],
-    rawFiles: [...cpaAccounts.map((account) => account.raw), ...sub2.rawFiles],
+    files: [...cpaAccounts.map((account) => account.file), ...sub2.files, ...magpie.files, ...runtimeFiles],
+    rawFiles: [...cpaAccounts.map((account) => account.raw), ...sub2.rawFiles, ...magpie.rawFiles],
     config,
   };
 }
